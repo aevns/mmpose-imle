@@ -2,16 +2,17 @@
 import copy
 
 import torch.nn as nn
-from mmcv.cnn import build_conv_layer, build_norm_layer
-from mmengine.model import BaseModule, constant_init
+from mmcv.cnn import (build_conv_layer, build_norm_layer, constant_init,
+                      normal_init)
 from torch.nn.modules.batchnorm import _BatchNorm
 
-from mmpose.registry import MODELS
-from .base_backbone import BaseBackbone
+from mmpose.utils import get_root_logger
+from ..builder import BACKBONES
 from .resnet import BasicBlock, Bottleneck, get_expansion
+from .utils import load_checkpoint
 
 
-class HRModule(BaseModule):
+class HRModule(nn.Module):
     """High-Resolution Module for HRNet.
 
     In this module, every branch has 4 BasicBlocks/Bottlenecks. Fusion/Exchange
@@ -28,12 +29,11 @@ class HRModule(BaseModule):
                  with_cp=False,
                  conv_cfg=None,
                  norm_cfg=dict(type='BN'),
-                 upsample_cfg=dict(mode='nearest', align_corners=None),
-                 init_cfg=None):
+                 upsample_cfg=dict(mode='nearest', align_corners=None)):
 
         # Protect mutable default arguments
         norm_cfg = copy.deepcopy(norm_cfg)
-        super().__init__(init_cfg=init_cfg)
+        super().__init__()
         self._check_branches(num_branches, num_blocks, in_channels,
                              num_channels)
 
@@ -211,8 +211,8 @@ class HRModule(BaseModule):
         return x_fuse
 
 
-@MODELS.register_module()
-class HRNet(BaseBackbone):
+@BACKBONES.register_module()
+class HRNet(nn.Module):
     """HRNet backbone.
 
     `High-Resolution Representations for Labeling Pixels and Regions
@@ -232,15 +232,6 @@ class HRNet(BaseBackbone):
             in resblocks to let them behave as identity.
         frozen_stages (int): Stages to be frozen (stop grad and set eval mode).
             -1 means not freezing any parameters. Default: -1.
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default:
-            ``[
-                dict(type='Normal', std=0.001, layer=['Conv2d']),
-                dict(
-                    type='Constant',
-                    val=1,
-                    layer=['_BatchNorm', 'GroupNorm'])
-            ]``
 
     Example:
         >>> from mmpose.models import HRNet
@@ -281,28 +272,21 @@ class HRNet(BaseBackbone):
 
     blocks_dict = {'BASIC': BasicBlock, 'BOTTLENECK': Bottleneck}
 
-    def __init__(
-        self,
-        extra,
-        in_channels=3,
-        conv_cfg=None,
-        norm_cfg=dict(type='BN'),
-        norm_eval=False,
-        with_cp=False,
-        zero_init_residual=False,
-        frozen_stages=-1,
-        init_cfg=[
-            dict(type='Normal', std=0.001, layer=['Conv2d']),
-            dict(type='Constant', val=1, layer=['_BatchNorm', 'GroupNorm'])
-        ],
-    ):
+    def __init__(self,
+                 extra,
+                 in_channels=3,
+                 conv_cfg=None,
+                 norm_cfg=dict(type='BN'),
+                 norm_eval=False,
+                 with_cp=False,
+                 zero_init_residual=False,
+                 frozen_stages=-1):
         # Protect mutable default arguments
         norm_cfg = copy.deepcopy(norm_cfg)
-        super().__init__(init_cfg=init_cfg)
+        super().__init__()
         self.extra = extra
         self.conv_cfg = conv_cfg
         self.norm_cfg = norm_cfg
-        self.init_cfg = init_cfg
         self.norm_eval = norm_eval
         self.with_cp = with_cp
         self.zero_init_residual = zero_init_residual
@@ -548,21 +532,31 @@ class HRNet(BaseBackbone):
                 for param in m.parameters():
                     param.requires_grad = False
 
-    def init_weights(self):
-        """Initialize the weights in backbone."""
-        super(HRNet, self).init_weights()
+    def init_weights(self, pretrained=None):
+        """Initialize the weights in backbone.
 
-        if (isinstance(self.init_cfg, dict)
-                and self.init_cfg['type'] == 'Pretrained'):
-            # Suppress zero_init_residual if use pretrained model.
-            return
-
-        if self.zero_init_residual:
+        Args:
+            pretrained (str, optional): Path to pre-trained weights.
+                Defaults to None.
+        """
+        if isinstance(pretrained, str):
+            logger = get_root_logger()
+            load_checkpoint(self, pretrained, strict=False, logger=logger)
+        elif pretrained is None:
             for m in self.modules():
-                if isinstance(m, Bottleneck):
-                    constant_init(m.norm3, 0)
-                elif isinstance(m, BasicBlock):
-                    constant_init(m.norm2, 0)
+                if isinstance(m, nn.Conv2d):
+                    normal_init(m, std=0.001)
+                elif isinstance(m, (_BatchNorm, nn.GroupNorm)):
+                    constant_init(m, 1)
+
+            if self.zero_init_residual:
+                for m in self.modules():
+                    if isinstance(m, Bottleneck):
+                        constant_init(m.norm3, 0)
+                    elif isinstance(m, BasicBlock):
+                        constant_init(m.norm2, 0)
+        else:
+            raise TypeError('pretrained must be a str or None')
 
     def forward(self, x):
         """Forward function."""
@@ -598,7 +592,7 @@ class HRNet(BaseBackbone):
                 x_list.append(y_list[i])
         y_list = self.stage4(x_list)
 
-        return tuple(y_list)
+        return y_list
 
     def train(self, mode=True):
         """Convert the model into training mode."""

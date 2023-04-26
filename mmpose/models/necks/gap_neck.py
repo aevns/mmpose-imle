@@ -2,10 +2,10 @@
 import torch
 import torch.nn as nn
 
-from mmpose.registry import MODELS
+from ..builder import NECKS
 
 
-@MODELS.register_module()
+@NECKS.register_module()
 class GlobalAveragePooling(nn.Module):
     """Global Average Pooling neck.
 
@@ -22,8 +22,6 @@ class GlobalAveragePooling(nn.Module):
         pass
 
     def forward(self, inputs):
-        """Forward function."""
-
         if isinstance(inputs, tuple):
             outs = tuple([self.gap(x) for x in inputs])
             outs = tuple(

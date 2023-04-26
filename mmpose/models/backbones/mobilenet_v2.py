@@ -1,18 +1,18 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import copy
+import logging
 
 import torch.nn as nn
 import torch.utils.checkpoint as cp
-from mmcv.cnn import ConvModule
-from mmengine.model import BaseModule
+from mmcv.cnn import ConvModule, constant_init, kaiming_init
 from torch.nn.modules.batchnorm import _BatchNorm
 
-from mmpose.registry import MODELS
+from ..builder import BACKBONES
 from .base_backbone import BaseBackbone
-from .utils import make_divisible
+from .utils import load_checkpoint, make_divisible
 
 
-class InvertedResidual(BaseModule):
+class InvertedResidual(nn.Module):
     """InvertedResidual block for MobileNetV2.
 
     Args:
@@ -29,8 +29,6 @@ class InvertedResidual(BaseModule):
             Default: dict(type='ReLU6').
         with_cp (bool): Use checkpoint or not. Using checkpoint will save some
             memory while slowing down the training speed. Default: False.
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default: None
     """
 
     def __init__(self,
@@ -41,12 +39,11 @@ class InvertedResidual(BaseModule):
                  conv_cfg=None,
                  norm_cfg=dict(type='BN'),
                  act_cfg=dict(type='ReLU6'),
-                 with_cp=False,
-                 init_cfg=None):
+                 with_cp=False):
         # Protect mutable default arguments
         norm_cfg = copy.deepcopy(norm_cfg)
         act_cfg = copy.deepcopy(act_cfg)
-        super().__init__(init_cfg=init_cfg)
+        super().__init__()
         self.stride = stride
         assert stride in [1, 2], f'stride must in [1, 2]. ' \
             f'But received {stride}.'
@@ -100,7 +97,7 @@ class InvertedResidual(BaseModule):
         return out
 
 
-@MODELS.register_module()
+@BACKBONES.register_module()
 class MobileNetV2(BaseBackbone):
     """MobileNetV2 backbone.
 
@@ -122,15 +119,6 @@ class MobileNetV2(BaseBackbone):
             and its variants only. Default: False.
         with_cp (bool): Use checkpoint or not. Using checkpoint will save some
             memory while slowing down the training speed. Default: False.
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default:
-            ``[
-                dict(type='Kaiming', layer=['Conv2d']),
-                dict(
-                    type='Constant',
-                    val=1,
-                    layer=['_BatchNorm', 'GroupNorm'])
-            ]``
     """
 
     # Parameters to build layers. 4 parameters are needed to construct a
@@ -147,18 +135,11 @@ class MobileNetV2(BaseBackbone):
                  norm_cfg=dict(type='BN'),
                  act_cfg=dict(type='ReLU6'),
                  norm_eval=False,
-                 with_cp=False,
-                 init_cfg=[
-                     dict(type='Kaiming', layer=['Conv2d']),
-                     dict(
-                         type='Constant',
-                         val=1,
-                         layer=['_BatchNorm', 'GroupNorm'])
-                 ]):
+                 with_cp=False):
         # Protect mutable default arguments
         norm_cfg = copy.deepcopy(norm_cfg)
         act_cfg = copy.deepcopy(act_cfg)
-        super().__init__(init_cfg=init_cfg)
+        super().__init__()
         self.widen_factor = widen_factor
         self.out_indices = out_indices
         for index in out_indices:
@@ -248,6 +229,19 @@ class MobileNetV2(BaseBackbone):
 
         return nn.Sequential(*layers)
 
+    def init_weights(self, pretrained=None):
+        if isinstance(pretrained, str):
+            logger = logging.getLogger()
+            load_checkpoint(self, pretrained, strict=False, logger=logger)
+        elif pretrained is None:
+            for m in self.modules():
+                if isinstance(m, nn.Conv2d):
+                    kaiming_init(m)
+                elif isinstance(m, (_BatchNorm, nn.GroupNorm)):
+                    constant_init(m, 1)
+        else:
+            raise TypeError('pretrained must be a str or None')
+
     def forward(self, x):
         x = self.conv1(x)
 
@@ -258,6 +252,8 @@ class MobileNetV2(BaseBackbone):
             if i in self.out_indices:
                 outs.append(x)
 
+        if len(outs) == 1:
+            return outs[0]
         return tuple(outs)
 
     def _freeze_stages(self):

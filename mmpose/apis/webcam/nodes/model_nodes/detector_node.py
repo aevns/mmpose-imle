@@ -1,9 +1,9 @@
 # Copyright (c) OpenMMLab. All rights reserved.
+from itertools import zip_longest
 from typing import Dict, List, Optional, Union
 
 import numpy as np
 
-from mmpose.utils import adapt_mmdet_pipeline
 from ...utils import get_config_path
 from ..node import Node
 from ..registry import NODES
@@ -92,7 +92,6 @@ class DetectorNode(Node):
         # Init model
         self.model = init_detector(
             self.model_config, self.model_checkpoint, device=self.device)
-        self.model.cfg = adapt_mmdet_pipeline(self.model.cfg)
 
         # Register buffers
         self.register_input_buffer(input_buffer, 'input', trigger=True)
@@ -121,23 +120,34 @@ class DetectorNode(Node):
 
     def _post_process(self, preds) -> List[Dict]:
         """Post-process the predictions of MMDetection model."""
-        instances = preds.pred_instances.cpu().numpy()
+        if isinstance(preds, tuple):
+            dets = preds[0]
+            segms = preds[1]
+        else:
+            dets = preds
+            segms = [[]] * len(dets)
 
-        classes = self.model.dataset_meta['classes']
+        classes = self.model.CLASSES
         if isinstance(classes, str):
             classes = (classes, )
 
+        assert len(dets) == len(classes)
+        assert len(segms) == len(classes)
+
         objects = []
-        for i in range(len(instances)):
-            if instances.scores[i] < self.bbox_thr:
-                continue
-            class_id = instances.labels[i]
-            obj = {
-                'class_id': class_id,
-                'label': classes[class_id],
-                'bbox': instances.bboxes[i],
-                'det_model_cfg': self.model.cfg,
-                'dataset_meta': self.model.dataset_meta.copy(),
-            }
-            objects.append(obj)
+
+        for i, (label, bboxes, masks) in enumerate(zip(classes, dets, segms)):
+
+            for bbox, mask in zip_longest(bboxes, masks):
+                if bbox[4] < self.bbox_thr:
+                    continue
+                obj = {
+                    'class_id': i,
+                    'label': label,
+                    'bbox': bbox,
+                    'mask': mask,
+                    'det_model_cfg': self.model.cfg
+                }
+                objects.append(obj)
+
         return objects

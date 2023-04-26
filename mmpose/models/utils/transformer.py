@@ -5,8 +5,8 @@ from typing import Sequence
 import torch.nn as nn
 import torch.nn.functional as F
 from mmcv.cnn import build_conv_layer, build_norm_layer
-from mmengine.model import BaseModule
-from mmengine.utils import to_2tuple
+from mmcv.runner.base_module import BaseModule
+from mmcv.utils import to_2tuple
 
 
 def nlc_to_nchw(x, hw_shape):
@@ -87,8 +87,6 @@ class AdaptivePadding(nn.Module):
         self.dilation = dilation
 
     def get_pad_shape(self, input_shape):
-        """Get horizontal and vertical padding shapes."""
-
         input_h, input_w = input_shape
         kernel_h, kernel_w = self.kernel_size
         stride_h, stride_w = self.stride
@@ -101,8 +99,6 @@ class AdaptivePadding(nn.Module):
         return pad_h, pad_w
 
     def forward(self, x):
-        """Forward function."""
-
         pad_h, pad_w = self.get_pad_shape(x.size()[-2:])
         if pad_h > 0 or pad_w > 0:
             if self.padding == 'corner':

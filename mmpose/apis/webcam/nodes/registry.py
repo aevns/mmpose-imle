@@ -1,4 +1,4 @@
 # Copyright (c) OpenMMLab. All rights reserved.
-from mmengine.registry import Registry
+from mmcv.utils import Registry
 
 NODES = Registry('node')

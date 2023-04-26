@@ -6,11 +6,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from mmpose.registry import MODELS
+from ..builder import LOSSES
 from ..utils.realnvp import RealNVP
 
 
-@MODELS.register_module()
+@LOSSES.register_module()
 class RLELoss(nn.Module):
     """RLE Loss.
 
@@ -21,7 +21,7 @@ class RLELoss(nn.Module):
     <https://github.com/Jeff-sjtu/res-loglikelihood-regression>`_.
 
     Args:
-        use_target_weight (bool): Option to use weighted loss.
+        use_target_weight (bool): Option to use weighted MSE loss.
             Different joint types may have different target weights.
         size_average (bool): Option to average the loss by the batch_size.
         residual (bool): Option to add L1 loss and let the flow
@@ -34,16 +34,16 @@ class RLELoss(nn.Module):
                  use_target_weight=False,
                  size_average=True,
                  residual=True,
-                 q_distribution='laplace'):
+                 q_dis='laplace'):
         super(RLELoss, self).__init__()
         self.size_average = size_average
         self.use_target_weight = use_target_weight
         self.residual = residual
-        self.q_distribution = q_distribution
+        self.q_dis = q_dis
 
         self.flow_model = RealNVP()
 
-    def forward(self, pred, sigma, target, target_weight=None):
+    def forward(self, output, target, target_weight=None):
         """Forward function.
 
         Note:
@@ -52,13 +52,14 @@ class RLELoss(nn.Module):
             - dimension of keypoints: D (D=2 or D=3)
 
         Args:
-            pred (Tensor[N, K, D]): Output regression.
-            sigma (Tensor[N, K, D]): Output sigma.
-            target (Tensor[N, K, D]): Target regression.
-            target_weight (Tensor[N, K, D]):
+            output (torch.Tensor[N, K, D*2]): Output regression,
+                    including coords and sigmas.
+            target (torch.Tensor[N, K, D]): Target regression.
+            target_weight (torch.Tensor[N, K, D]):
                 Weights across different joint types.
         """
-        sigma = sigma.sigmoid()
+        pred = output[:, :, :2]
+        sigma = output[:, :, 2:4].sigmoid()
 
         error = (pred - target) / (sigma + 1e-9)
         # (B, K, 2)
@@ -69,8 +70,8 @@ class RLELoss(nn.Module):
         nf_loss = log_sigma - log_phi
 
         if self.residual:
-            assert self.q_distribution in ['laplace', 'gaussian']
-            if self.q_distribution == 'laplace':
+            assert self.q_dis in ['laplace', 'gaussian', 'strict']
+            if self.q_dis == 'laplace':
                 loss_q = torch.log(sigma * 2) + torch.abs(error)
             else:
                 loss_q = torch.log(
@@ -90,7 +91,7 @@ class RLELoss(nn.Module):
         return loss.sum()
 
 
-@MODELS.register_module()
+@LOSSES.register_module()
 class SmoothL1Loss(nn.Module):
     """SmoothL1Loss loss.
 
@@ -120,14 +121,8 @@ class SmoothL1Loss(nn.Module):
             target_weight (torch.Tensor[N, K, D]):
                 Weights across different joint types.
         """
-
         if self.use_target_weight:
             assert target_weight is not None
-            assert output.ndim >= target_weight.ndim
-
-            for i in range(output.ndim - target_weight.ndim):
-                target_weight = target_weight.unsqueeze(-1)
-
             loss = self.criterion(output * target_weight,
                                   target * target_weight)
         else:
@@ -136,88 +131,7 @@ class SmoothL1Loss(nn.Module):
         return loss * self.loss_weight
 
 
-@MODELS.register_module()
-class SoftWeightSmoothL1Loss(nn.Module):
-    """Smooth L1 loss with soft weight for regression.
-
-    Args:
-        use_target_weight (bool): Option to use weighted MSE loss.
-            Different joint types may have different target weights.
-        supervise_empty (bool): Whether to supervise the output with zero
-            weight.
-        beta (float):  Specifies the threshold at which to change between
-            L1 and L2 loss.
-        loss_weight (float): Weight of the loss. Default: 1.0.
-    """
-
-    def __init__(self,
-                 use_target_weight=False,
-                 supervise_empty=True,
-                 beta=1.0,
-                 loss_weight=1.):
-        super().__init__()
-
-        reduction = 'none' if use_target_weight else 'mean'
-        self.criterion = partial(
-            self.smooth_l1_loss, reduction=reduction, beta=beta)
-
-        self.supervise_empty = supervise_empty
-        self.use_target_weight = use_target_weight
-        self.loss_weight = loss_weight
-
-    @staticmethod
-    def smooth_l1_loss(input, target, reduction='none', beta=1.0):
-        """Re-implement torch.nn.functional.smooth_l1_loss with beta to support
-        pytorch <= 1.6."""
-        delta = input - target
-        mask = delta.abs() < beta
-        delta[mask] = (delta[mask]).pow(2) / (2 * beta)
-        delta[~mask] = delta[~mask].abs() - beta / 2
-
-        if reduction == 'mean':
-            return delta.mean()
-        elif reduction == 'sum':
-            return delta.sum()
-        elif reduction == 'none':
-            return delta
-        else:
-            raise ValueError(f'reduction must be \'mean\', \'sum\' or '
-                             f'\'none\', but got \'{reduction}\'')
-
-    def forward(self, output, target, target_weight=None):
-        """Forward function.
-
-        Note:
-            - batch_size: N
-            - num_keypoints: K
-            - dimension of keypoints: D (D=2 or D=3)
-
-        Args:
-            output (torch.Tensor[N, K, D]): Output regression.
-            target (torch.Tensor[N, K, D]): Target regression.
-            target_weight (torch.Tensor[N, K, D]):
-                Weights across different joint types.
-        """
-        if self.use_target_weight:
-            assert target_weight is not None
-            assert output.ndim >= target_weight.ndim
-
-            for i in range(output.ndim - target_weight.ndim):
-                target_weight = target_weight.unsqueeze(-1)
-
-            loss = self.criterion(output, target) * target_weight
-            if self.supervise_empty:
-                loss = loss.mean()
-            else:
-                num_elements = torch.nonzero(target_weight > 0).size()[0]
-                loss = loss.sum() / max(num_elements, 1.0)
-        else:
-            loss = self.criterion(output, target)
-
-        return loss * self.loss_weight
-
-
-@MODELS.register_module()
+@LOSSES.register_module()
 class WingLoss(nn.Module):
     """Wing Loss. paper ref: 'Wing Loss for Robust Facial Landmark Localisation
     with Convolutional Neural Networks' Feng et al. CVPR'2018.
@@ -287,7 +201,7 @@ class WingLoss(nn.Module):
         return loss * self.loss_weight
 
 
-@MODELS.register_module()
+@LOSSES.register_module()
 class SoftWingLoss(nn.Module):
     """Soft Wing Loss 'Structure-Coherent Deep Feature Learning for Robust Face
     Alignment' Lin et al. TIP'2021.
@@ -365,7 +279,7 @@ class SoftWingLoss(nn.Module):
         return loss * self.loss_weight
 
 
-@MODELS.register_module()
+@LOSSES.register_module()
 class MPJPELoss(nn.Module):
     """MPJPE (Mean Per Joint Position Error) loss.
 
@@ -405,7 +319,7 @@ class MPJPELoss(nn.Module):
         return loss * self.loss_weight
 
 
-@MODELS.register_module()
+@LOSSES.register_module()
 class L1Loss(nn.Module):
     """L1Loss loss ."""
 
@@ -438,7 +352,7 @@ class L1Loss(nn.Module):
         return loss * self.loss_weight
 
 
-@MODELS.register_module()
+@LOSSES.register_module()
 class MSELoss(nn.Module):
     """MSE loss for coordinate regression."""
 
@@ -461,7 +375,6 @@ class MSELoss(nn.Module):
             target_weight (torch.Tensor[N, K, 2]):
                 Weights across different joint types.
         """
-
         if self.use_target_weight:
             assert target_weight is not None
             loss = self.criterion(output * target_weight,
@@ -472,7 +385,7 @@ class MSELoss(nn.Module):
         return loss * self.loss_weight
 
 
-@MODELS.register_module()
+@LOSSES.register_module()
 class BoneLoss(nn.Module):
     """Bone length loss.
 
@@ -526,7 +439,7 @@ class BoneLoss(nn.Module):
         return loss * self.loss_weight
 
 
-@MODELS.register_module()
+@LOSSES.register_module()
 class SemiSupervisionLoss(nn.Module):
     """Semi-supervision loss for unlabeled data. It is composed of projection
     loss and bone loss.
@@ -616,3 +529,79 @@ class SemiSupervisionLoss(nn.Module):
         losses['bone_loss'] = loss_bone
 
         return losses
+
+
+@LOSSES.register_module()
+class SoftWeightSmoothL1Loss(nn.Module):
+    """Smooth L1 loss with soft weight for regression.
+
+    Args:
+        use_target_weight (bool): Option to use weighted MSE loss.
+            Different joint types may have different target weights.
+        supervise_empty (bool): Whether to supervise the output with zero
+            weight.
+        beta (float):  Specifies the threshold at which to change between
+            L1 and L2 loss.
+        loss_weight (float): Weight of the loss. Default: 1.0.
+    """
+
+    def __init__(self,
+                 use_target_weight=False,
+                 supervise_empty=True,
+                 beta=1.0,
+                 loss_weight=1.):
+        super().__init__()
+
+        reduction = 'none' if use_target_weight else 'mean'
+        self.criterion = partial(
+            self.smooth_l1_loss, reduction=reduction, beta=beta)
+
+        self.supervise_empty = supervise_empty
+        self.use_target_weight = use_target_weight
+        self.loss_weight = loss_weight
+
+    @staticmethod
+    def smooth_l1_loss(input, target, reduction='none', beta=1.0):
+        """Re-implement torch.nn.functional.smooth_l1_loss with beta to support
+        pytorch <= 1.6."""
+        delta = input - target
+        mask = delta.abs() < beta
+        delta[mask] = (delta[mask]).pow(2) / (2 * beta)
+        delta[~mask] = delta[~mask].abs() - beta / 2
+
+        if reduction == 'mean':
+            return delta.mean()
+        elif reduction == 'sum':
+            return delta.sum()
+        elif reduction == 'none':
+            return delta
+        else:
+            raise ValueError(f'reduction must be \'mean\', \'sum\' or '
+                             f'\'none\', but got \'{reduction}\'')
+
+    def forward(self, output, target, target_weight=None):
+        """Forward function.
+
+        Note:
+            - batch_size: N
+            - num_keypoints: K
+            - dimension of keypoints: D (D=2 or D=3)
+
+        Args:
+            output (torch.Tensor[N, K, D]): Output regression.
+            target (torch.Tensor[N, K, D]): Target regression.
+            target_weight (torch.Tensor[N, K, D]):
+                Weights across different joint types.
+        """
+        if self.use_target_weight:
+            assert target_weight is not None
+            loss = self.criterion(output, target) * target_weight
+            if self.supervise_empty:
+                loss = loss.mean()
+            else:
+                num_elements = torch.nonzero(target_weight > 0).size()[0]
+                loss = loss.sum() / max(num_elements, 1.0)
+        else:
+            loss = self.criterion(output, target)
+
+        return loss * self.loss_weight

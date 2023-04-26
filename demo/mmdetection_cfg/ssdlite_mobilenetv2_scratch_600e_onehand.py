@@ -1,7 +1,6 @@
 # =========================================================
 # from 'mmdetection/configs/_base_/default_runtime.py'
 # =========================================================
-default_scope = 'mmdet'
 checkpoint_config = dict(interval=1)
 # yapf:disable
 log_config = dict(
@@ -14,16 +13,62 @@ log_config = dict(
 custom_hooks = [dict(type='NumClassCheckHook')]
 # =========================================================
 
-# model settings
-data_preprocessor = dict(
-    type='DetDataPreprocessor',
-    mean=[123.675, 116.28, 103.53],
-    std=[58.395, 57.12, 57.375],
-    bgr_to_rgb=True,
-    pad_size_divisor=1)
+# =========================================================
+# from 'mmdetection/configs/_base_/datasets/coco_detection.py'
+# =========================================================
+# dataset settings
+dataset_type = 'CocoDataset'
+data_root = 'data/coco/'
+img_norm_cfg = dict(
+    mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
+train_pipeline = [
+    dict(type='LoadImageFromFile'),
+    dict(type='LoadAnnotations', with_bbox=True),
+    dict(type='Resize', img_scale=(1333, 800), keep_ratio=True),
+    dict(type='RandomFlip', flip_ratio=0.5),
+    dict(type='Normalize', **img_norm_cfg),
+    dict(type='Pad', size_divisor=32),
+    dict(type='DefaultFormatBundle'),
+    dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels']),
+]
+test_pipeline = [
+    dict(type='LoadImageFromFile'),
+    dict(
+        type='MultiScaleFlipAug',
+        img_scale=(1333, 800),
+        flip=False,
+        transforms=[
+            dict(type='Resize', keep_ratio=True),
+            dict(type='RandomFlip'),
+            dict(type='Normalize', **img_norm_cfg),
+            dict(type='Pad', size_divisor=32),
+            dict(type='ImageToTensor', keys=['img']),
+            dict(type='Collect', keys=['img']),
+        ])
+]
+data = dict(
+    samples_per_gpu=2,
+    workers_per_gpu=2,
+    train=dict(
+        type=dataset_type,
+        ann_file=data_root + 'annotations/instances_train2017.json',
+        img_prefix=data_root + 'train2017/',
+        pipeline=train_pipeline),
+    val=dict(
+        type=dataset_type,
+        ann_file=data_root + 'annotations/instances_val2017.json',
+        img_prefix=data_root + 'val2017/',
+        pipeline=test_pipeline),
+    test=dict(
+        type=dataset_type,
+        ann_file=data_root + 'annotations/instances_val2017.json',
+        img_prefix=data_root + 'val2017/',
+        pipeline=test_pipeline))
+evaluation = dict(interval=1, metric='bbox')
+# =========================================================
+
 model = dict(
     type='SingleStageDetector',
-    data_preprocessor=data_preprocessor,
     backbone=dict(
         type='MobileNetV2',
         out_indices=(4, 7),
@@ -71,7 +116,6 @@ model = dict(
             min_pos_iou=0.,
             ignore_iof_thr=-1,
             gt_max_assign_all=False),
-        sampler=dict(type='PseudoSampler'),
         smoothl1_beta=1.,
         allowed_border=-1,
         pos_weight=-1,
@@ -86,35 +130,82 @@ model = dict(
 cudnn_benchmark = True
 
 # dataset settings
-file_client_args = dict(backend='disk')
+file_client_args = dict(
+    backend='petrel',
+    path_mapping=dict({
+        '.data/onehand10k/':
+        'openmmlab:s3://openmmlab/datasets/pose/OneHand10K/',
+        'data/onehand10k/':
+        'openmmlab:s3://openmmlab/datasets/pose/OneHand10K/'
+    }))
 
 dataset_type = 'CocoDataset'
 data_root = 'data/onehand10k/'
 classes = ('hand', )
-input_size = 320
-test_pipeline = [
-    dict(type='LoadImageFromFile'),
-    dict(type='Resize', scale=(input_size, input_size), keep_ratio=False),
+img_norm_cfg = dict(
+    mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
+train_pipeline = [
+    dict(type='LoadImageFromFile', file_client_args=file_client_args),
     dict(type='LoadAnnotations', with_bbox=True),
     dict(
-        type='PackDetInputs',
-        meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
-                   'scale_factor'))
+        type='Expand',
+        mean=img_norm_cfg['mean'],
+        to_rgb=img_norm_cfg['to_rgb'],
+        ratio_range=(1, 4)),
+    dict(
+        type='MinIoURandomCrop',
+        min_ious=(0.1, 0.3, 0.5, 0.7, 0.9),
+        min_crop_size=0.3),
+    dict(type='Resize', img_scale=(320, 320), keep_ratio=False),
+    dict(type='RandomFlip', flip_ratio=0.5),
+    dict(
+        type='PhotoMetricDistortion',
+        brightness_delta=32,
+        contrast_range=(0.5, 1.5),
+        saturation_range=(0.5, 1.5),
+        hue_delta=18),
+    dict(type='Normalize', **img_norm_cfg),
+    dict(type='Pad', size_divisor=320),
+    dict(type='DefaultFormatBundle'),
+    dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels']),
 ]
-
-val_dataloader = dict(
-    batch_size=8,
-    num_workers=2,
-    persistent_workers=True,
-    drop_last=False,
-    sampler=dict(type='DefaultSampler', shuffle=False),
-    dataset=dict(
-        type=dataset_type,
-        data_root=data_root,
-        ann_file='annotations/onehand10k_test.json',
-        test_mode=True,
+test_pipeline = [
+    dict(type='LoadImageFromFile', file_client_args=file_client_args),
+    dict(
+        type='MultiScaleFlipAug',
+        img_scale=(320, 320),
+        flip=False,
+        transforms=[
+            dict(type='Resize', keep_ratio=False),
+            dict(type='Normalize', **img_norm_cfg),
+            dict(type='Pad', size_divisor=320),
+            dict(type='ImageToTensor', keys=['img']),
+            dict(type='Collect', keys=['img']),
+        ])
+]
+data = dict(
+    samples_per_gpu=24,
+    workers_per_gpu=4,
+    train=dict(
+        _delete_=True,
+        type='RepeatDataset',  # use RepeatDataset to speed up training
+        times=5,
+        dataset=dict(
+            type=dataset_type,
+            ann_file=data_root + 'annotations/onehand10k_train.json',
+            img_prefix=data_root,
+            classes=classes,
+            pipeline=train_pipeline)),
+    val=dict(
+        ann_file=data_root + 'annotations/onehand10k_test.json',
+        img_prefix=data_root,
+        classes=classes,
+        pipeline=test_pipeline),
+    test=dict(
+        ann_file=data_root + 'annotations/onehand10k_test.json',
+        img_prefix=data_root,
+        classes=classes,
         pipeline=test_pipeline))
-test_dataloader = val_dataloader
 
 # optimizer
 optimizer = dict(type='SGD', lr=0.015, momentum=0.9, weight_decay=4.0e-5)
@@ -147,7 +238,3 @@ auto_scale_lr = dict(base_batch_size=192)
 load_from = 'https://download.openmmlab.com/mmdetection/'
 'v2.0/ssd/ssdlite_mobilenetv2_scratch_600e_coco/'
 'ssdlite_mobilenetv2_scratch_600e_coco_20210629_110627-974d9307.pth'
-
-vis_backends = [dict(type='LocalVisBackend')]
-visualizer = dict(
-    type='DetLocalVisualizer', vis_backends=vis_backends, name='visualizer')

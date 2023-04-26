@@ -1,11 +1,11 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import torch.nn as nn
 
-from mmpose.registry import MODELS
+from ..builder import BACKBONES
 from .base_backbone import BaseBackbone
 
 
-@MODELS.register_module()
+@BACKBONES.register_module()
 class AlexNet(BaseBackbone):
     """`AlexNet <https://en.wikipedia.org/wiki/AlexNet>`__ backbone.
 
@@ -15,12 +15,10 @@ class AlexNet(BaseBackbone):
         num_classes (int): number of classes for classification.
             The default value is -1, which uses the backbone as
             a feature extractor without the top classifier.
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default: None
     """
 
-    def __init__(self, num_classes=-1, init_cfg=None):
-        super().__init__(init_cfg=init_cfg)
+    def __init__(self, num_classes=-1):
+        super().__init__()
         self.num_classes = num_classes
         self.features = nn.Sequential(
             nn.Conv2d(3, 64, kernel_size=11, stride=4, padding=2),
@@ -55,4 +53,4 @@ class AlexNet(BaseBackbone):
             x = x.view(x.size(0), 256 * 6 * 6)
             x = self.classifier(x)
 
-        return (x, )
+        return x

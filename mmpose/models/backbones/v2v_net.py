@@ -8,13 +8,12 @@
 import torch.nn as nn
 import torch.nn.functional as F
 from mmcv.cnn import ConvModule
-from mmengine.model import BaseModule
 
-from mmpose.registry import MODELS
+from ..builder import BACKBONES
 from .base_backbone import BaseBackbone
 
 
-class Basic3DBlock(BaseModule):
+class Basic3DBlock(nn.Module):
     """A basic 3D convolutional block.
 
     Args:
@@ -25,8 +24,6 @@ class Basic3DBlock(BaseModule):
             Default: dict(type='Conv3d')
         norm_cfg (dict): Dictionary to construct and config norm layer.
             Default: dict(type='BN3d')
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default: None
     """
 
     def __init__(self,
@@ -34,9 +31,8 @@ class Basic3DBlock(BaseModule):
                  out_channels,
                  kernel_size,
                  conv_cfg=dict(type='Conv3d'),
-                 norm_cfg=dict(type='BN3d'),
-                 init_cfg=None):
-        super(Basic3DBlock, self).__init__(init_cfg=init_cfg)
+                 norm_cfg=dict(type='BN3d')):
+        super(Basic3DBlock, self).__init__()
         self.block = ConvModule(
             in_channels,
             out_channels,
@@ -52,7 +48,7 @@ class Basic3DBlock(BaseModule):
         return self.block(x)
 
 
-class Res3DBlock(BaseModule):
+class Res3DBlock(nn.Module):
     """A residual 3D convolutional block.
 
     Args:
@@ -64,8 +60,6 @@ class Res3DBlock(BaseModule):
             Default: dict(type='Conv3d')
         norm_cfg (dict): Dictionary to construct and config norm layer.
             Default: dict(type='BN3d')
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default: None
     """
 
     def __init__(self,
@@ -73,9 +67,8 @@ class Res3DBlock(BaseModule):
                  out_channels,
                  kernel_size=3,
                  conv_cfg=dict(type='Conv3d'),
-                 norm_cfg=dict(type='BN3d'),
-                 init_cfg=None):
-        super(Res3DBlock, self).__init__(init_cfg=init_cfg)
+                 norm_cfg=dict(type='BN3d')):
+        super(Res3DBlock, self).__init__()
         self.res_branch = nn.Sequential(
             ConvModule(
                 in_channels,
@@ -118,7 +111,7 @@ class Res3DBlock(BaseModule):
         return F.relu(res + skip, True)
 
 
-class Pool3DBlock(BaseModule):
+class Pool3DBlock(nn.Module):
     """A 3D max-pool block.
 
     Args:
@@ -135,7 +128,7 @@ class Pool3DBlock(BaseModule):
             x, kernel_size=self.pool_size, stride=self.pool_size)
 
 
-class Upsample3DBlock(BaseModule):
+class Upsample3DBlock(nn.Module):
     """A 3D upsample block.
 
     Args:
@@ -145,17 +138,10 @@ class Upsample3DBlock(BaseModule):
             Default: 2
         stride (int):  Kernel size of the transposed convolution operation.
             Default: 2
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default: None
     """
 
-    def __init__(self,
-                 in_channels,
-                 out_channels,
-                 kernel_size=2,
-                 stride=2,
-                 init_cfg=None):
-        super(Upsample3DBlock, self).__init__(init_cfg=init_cfg)
+    def __init__(self, in_channels, out_channels, kernel_size=2, stride=2):
+        super(Upsample3DBlock, self).__init__()
         assert kernel_size == 2
         assert stride == 2
         self.block = nn.Sequential(
@@ -172,17 +158,15 @@ class Upsample3DBlock(BaseModule):
         return self.block(x)
 
 
-class EncoderDecorder(BaseModule):
+class EncoderDecorder(nn.Module):
     """An encoder-decoder block.
 
     Args:
         in_channels (int): Input channels of this block
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default: None
     """
 
-    def __init__(self, in_channels=32, init_cfg=None):
-        super(EncoderDecorder, self).__init__(init_cfg=init_cfg)
+    def __init__(self, in_channels=32):
+        super(EncoderDecorder, self).__init__()
 
         self.encoder_pool1 = Pool3DBlock(2)
         self.encoder_res1 = Res3DBlock(in_channels, in_channels * 2)
@@ -224,7 +208,7 @@ class EncoderDecorder(BaseModule):
         return x
 
 
-@MODELS.register_module()
+@BACKBONES.register_module()
 class V2VNet(BaseBackbone):
     """V2VNet.
 
@@ -238,23 +222,10 @@ class V2VNet(BaseBackbone):
             Number of channels of the output volume.
         mid_channels (int):
             Input and output channels of the encoder-decoder block.
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default: ``dict(
-                type='Normal',
-                std=0.001,
-                layer=['Conv3d', 'ConvTranspose3d']
-            )``
     """
 
-    def __init__(self,
-                 input_channels,
-                 output_channels,
-                 mid_channels=32,
-                 init_cfg=dict(
-                     type='Normal',
-                     std=0.001,
-                     layer=['Conv3d', 'ConvTranspose3d'])):
-        super(V2VNet, self).__init__(init_cfg=init_cfg)
+    def __init__(self, input_channels, output_channels, mid_channels=32):
+        super(V2VNet, self).__init__()
 
         self.front_layers = nn.Sequential(
             Basic3DBlock(input_channels, mid_channels // 2, 7),
@@ -266,10 +237,21 @@ class V2VNet(BaseBackbone):
         self.output_layer = nn.Conv3d(
             mid_channels, output_channels, kernel_size=1, stride=1, padding=0)
 
+        self._initialize_weights()
+
     def forward(self, x):
         """Forward function."""
         x = self.front_layers(x)
         x = self.encoder_decoder(x)
         x = self.output_layer(x)
 
-        return (x, )
+        return x
+
+    def _initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv3d):
+                nn.init.normal_(m.weight, 0, 0.001)
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.ConvTranspose3d):
+                nn.init.normal_(m.weight, 0, 0.001)
+                nn.init.constant_(m.bias, 0)

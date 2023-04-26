@@ -3,22 +3,22 @@
 # Original licence: Apache License 2.0.
 # ------------------------------------------------------------------------------
 
-import mmengine
+import mmcv
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint as cp
 from mmcv.cnn import (ConvModule, DepthwiseSeparableConvModule,
-                      build_conv_layer, build_norm_layer)
-from mmengine.model import BaseModule
+                      build_conv_layer, build_norm_layer, constant_init,
+                      normal_init)
 from torch.nn.modules.batchnorm import _BatchNorm
 
-from mmpose.registry import MODELS
-from .base_backbone import BaseBackbone
-from .utils import channel_shuffle
+from mmpose.utils import get_root_logger
+from ..builder import BACKBONES
+from .utils import channel_shuffle, load_checkpoint
 
 
-class SpatialWeighting(BaseModule):
+class SpatialWeighting(nn.Module):
     """Spatial weighting module.
 
     Args:
@@ -31,8 +31,6 @@ class SpatialWeighting(BaseModule):
         act_cfg (dict): Config dict for activation layer.
             Default: (dict(type='ReLU'), dict(type='Sigmoid')).
             The last ConvModule uses Sigmoid by default.
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default: None
     """
 
     def __init__(self,
@@ -40,13 +38,12 @@ class SpatialWeighting(BaseModule):
                  ratio=16,
                  conv_cfg=None,
                  norm_cfg=None,
-                 act_cfg=(dict(type='ReLU'), dict(type='Sigmoid')),
-                 init_cfg=None):
-        super().__init__(init_cfg=init_cfg)
+                 act_cfg=(dict(type='ReLU'), dict(type='Sigmoid'))):
+        super().__init__()
         if isinstance(act_cfg, dict):
             act_cfg = (act_cfg, act_cfg)
         assert len(act_cfg) == 2
-        assert mmengine.is_tuple_of(act_cfg, dict)
+        assert mmcv.is_tuple_of(act_cfg, dict)
         self.global_avgpool = nn.AdaptiveAvgPool2d(1)
         self.conv1 = ConvModule(
             in_channels=channels,
@@ -72,7 +69,7 @@ class SpatialWeighting(BaseModule):
         return x * out
 
 
-class CrossResolutionWeighting(BaseModule):
+class CrossResolutionWeighting(nn.Module):
     """Cross-resolution channel weighting module.
 
     Args:
@@ -85,8 +82,6 @@ class CrossResolutionWeighting(BaseModule):
         act_cfg (dict): Config dict for activation layer.
             Default: (dict(type='ReLU'), dict(type='Sigmoid')).
             The last ConvModule uses Sigmoid by default.
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default: None
     """
 
     def __init__(self,
@@ -94,13 +89,12 @@ class CrossResolutionWeighting(BaseModule):
                  ratio=16,
                  conv_cfg=None,
                  norm_cfg=None,
-                 act_cfg=(dict(type='ReLU'), dict(type='Sigmoid')),
-                 init_cfg=None):
-        super().__init__(init_cfg=init_cfg)
+                 act_cfg=(dict(type='ReLU'), dict(type='Sigmoid'))):
+        super().__init__()
         if isinstance(act_cfg, dict):
             act_cfg = (act_cfg, act_cfg)
         assert len(act_cfg) == 2
-        assert mmengine.is_tuple_of(act_cfg, dict)
+        assert mmcv.is_tuple_of(act_cfg, dict)
         self.channels = channels
         total_channel = sum(channels)
         self.conv1 = ConvModule(
@@ -134,7 +128,7 @@ class CrossResolutionWeighting(BaseModule):
         return out
 
 
-class ConditionalChannelWeighting(BaseModule):
+class ConditionalChannelWeighting(nn.Module):
     """Conditional channel weighting block.
 
     Args:
@@ -147,8 +141,6 @@ class ConditionalChannelWeighting(BaseModule):
             Default: dict(type='BN').
         with_cp (bool): Use checkpoint or not. Using checkpoint will save some
             memory while slowing down the training speed. Default: False.
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default: None
     """
 
     def __init__(self,
@@ -157,9 +149,8 @@ class ConditionalChannelWeighting(BaseModule):
                  reduce_ratio,
                  conv_cfg=None,
                  norm_cfg=dict(type='BN'),
-                 with_cp=False,
-                 init_cfg=None):
-        super().__init__(init_cfg=init_cfg)
+                 with_cp=False):
+        super().__init__()
         self.with_cp = with_cp
         self.stride = stride
         assert stride in [1, 2]
@@ -214,7 +205,7 @@ class ConditionalChannelWeighting(BaseModule):
         return out
 
 
-class Stem(BaseModule):
+class Stem(nn.Module):
     """Stem network block.
 
     Args:
@@ -229,8 +220,6 @@ class Stem(BaseModule):
             Default: dict(type='BN').
         with_cp (bool): Use checkpoint or not. Using checkpoint will save some
             memory while slowing down the training speed. Default: False.
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default: None
     """
 
     def __init__(self,
@@ -240,9 +229,8 @@ class Stem(BaseModule):
                  expand_ratio,
                  conv_cfg=None,
                  norm_cfg=dict(type='BN'),
-                 with_cp=False,
-                 init_cfg=None):
-        super().__init__(init_cfg=init_cfg)
+                 with_cp=False):
+        super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.conv_cfg = conv_cfg
@@ -342,19 +330,17 @@ class Stem(BaseModule):
         return out
 
 
-class IterativeHead(BaseModule):
+class IterativeHead(nn.Module):
     """Extra iterative head for feature learning.
 
     Args:
         in_channels (int): The input channels of the block.
         norm_cfg (dict): Config dict for normalization layer.
             Default: dict(type='BN').
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default: None
     """
 
-    def __init__(self, in_channels, norm_cfg=dict(type='BN'), init_cfg=None):
-        super().__init__(init_cfg=init_cfg)
+    def __init__(self, in_channels, norm_cfg=dict(type='BN')):
+        super().__init__()
         projects = []
         num_branchs = len(in_channels)
         self.in_channels = in_channels[::-1]
@@ -406,7 +392,7 @@ class IterativeHead(BaseModule):
         return y[::-1]
 
 
-class ShuffleUnit(BaseModule):
+class ShuffleUnit(nn.Module):
     """InvertedResidual block for ShuffleNetV2 backbone.
 
     Args:
@@ -421,8 +407,6 @@ class ShuffleUnit(BaseModule):
             Default: dict(type='ReLU').
         with_cp (bool): Use checkpoint or not. Using checkpoint will save some
             memory while slowing down the training speed. Default: False.
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default: None
     """
 
     def __init__(self,
@@ -432,9 +416,8 @@ class ShuffleUnit(BaseModule):
                  conv_cfg=None,
                  norm_cfg=dict(type='BN'),
                  act_cfg=dict(type='ReLU'),
-                 with_cp=False,
-                 init_cfg=None):
-        super().__init__(init_cfg=init_cfg)
+                 with_cp=False):
+        super().__init__()
         self.stride = stride
         self.with_cp = with_cp
 
@@ -524,7 +507,7 @@ class ShuffleUnit(BaseModule):
         return out
 
 
-class LiteHRModule(BaseModule):
+class LiteHRModule(nn.Module):
     """High-Resolution Module for LiteHRNet.
 
     It contains conditional channel weighting blocks and
@@ -543,23 +526,22 @@ class LiteHRModule(BaseModule):
         norm_cfg (dict): dictionary to construct and config norm layer.
         with_cp (bool): Use checkpoint or not. Using checkpoint will save some
             memory while slowing down the training speed.
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default: None
     """
 
-    def __init__(self,
-                 num_branches,
-                 num_blocks,
-                 in_channels,
-                 reduce_ratio,
-                 module_type,
-                 multiscale_output=False,
-                 with_fuse=True,
-                 conv_cfg=None,
-                 norm_cfg=dict(type='BN'),
-                 with_cp=False,
-                 init_cfg=None):
-        super().__init__(init_cfg=init_cfg)
+    def __init__(
+            self,
+            num_branches,
+            num_blocks,
+            in_channels,
+            reduce_ratio,
+            module_type,
+            multiscale_output=False,
+            with_fuse=True,
+            conv_cfg=None,
+            norm_cfg=dict(type='BN'),
+            with_cp=False,
+    ):
+        super().__init__()
         self._check_branches(num_branches, in_channels)
 
         self.in_channels = in_channels
@@ -752,8 +734,8 @@ class LiteHRModule(BaseModule):
         return out
 
 
-@MODELS.register_module()
-class LiteHRNet(BaseBackbone):
+@BACKBONES.register_module()
+class LiteHRNet(nn.Module):
     """Lite-HRNet backbone.
 
     `Lite-HRNet: A Lightweight High-Resolution Network
@@ -771,15 +753,6 @@ class LiteHRNet(BaseBackbone):
             and its variants only. Default: False
         with_cp (bool): Use checkpoint or not. Using checkpoint will save some
             memory while slowing down the training speed.
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default:
-            ``[
-                dict(type='Normal', std=0.001, layer=['Conv2d']),
-                dict(
-                    type='Constant',
-                    val=1,
-                    layer=['_BatchNorm', 'GroupNorm'])
-            ]``
 
     Example:
         >>> from mmpose.models import LiteHRNet
@@ -815,15 +788,8 @@ class LiteHRNet(BaseBackbone):
                  conv_cfg=None,
                  norm_cfg=dict(type='BN'),
                  norm_eval=False,
-                 with_cp=False,
-                 init_cfg=[
-                     dict(type='Normal', std=0.001, layer=['Conv2d']),
-                     dict(
-                         type='Constant',
-                         val=1,
-                         layer=['_BatchNorm', 'GroupNorm'])
-                 ]):
-        super().__init__(init_cfg=init_cfg)
+                 with_cp=False):
+        super().__init__()
         self.extra = extra
         self.conv_cfg = conv_cfg
         self.norm_cfg = norm_cfg
@@ -966,6 +932,25 @@ class LiteHRNet(BaseBackbone):
 
         return nn.Sequential(*modules), in_channels
 
+    def init_weights(self, pretrained=None):
+        """Initialize the weights in backbone.
+
+        Args:
+            pretrained (str, optional): Path to pre-trained weights.
+                Defaults to None.
+        """
+        if isinstance(pretrained, str):
+            logger = get_root_logger()
+            load_checkpoint(self, pretrained, strict=False, logger=logger)
+        elif pretrained is None:
+            for m in self.modules():
+                if isinstance(m, nn.Conv2d):
+                    normal_init(m, std=0.001)
+                elif isinstance(m, (_BatchNorm, nn.GroupNorm)):
+                    constant_init(m, 1)
+        else:
+            raise TypeError('pretrained must be a str or None')
+
     def forward(self, x):
         """Forward function."""
         x = self.stem(x)
@@ -988,7 +973,7 @@ class LiteHRNet(BaseBackbone):
         if self.with_head:
             x = self.head_layer(x)
 
-        return (x[0], )
+        return [x[0]]
 
     def train(self, mode=True):
         """Convert the model into training mode."""

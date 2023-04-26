@@ -5,6 +5,7 @@ from .hourglass import HourglassNet
 from .hourglass_ae import HourglassAENet
 from .hrformer import HRFormer
 from .hrnet import HRNet
+from .i3d import I3D
 from .litehrnet import LiteHRNet
 from .mobilenet_v2 import MobileNetV2
 from .mobilenet_v3 import MobileNetV3
@@ -21,11 +22,14 @@ from .seresnext import SEResNeXt
 from .shufflenet_v1 import ShuffleNetV1
 from .shufflenet_v2 import ShuffleNetV2
 from .swin import SwinTransformer
+from .tcformer import TCFormer
 from .tcn import TCN
 from .v2v_net import V2VNet
 from .vgg import VGG
 from .vipnas_mbv3 import ViPNAS_MobileNetV3
 from .vipnas_resnet import ViPNAS_ResNet
+from .imlenet import IMLENet
+from .ihrnet import IHRNet
 
 __all__ = [
     'AlexNet', 'HourglassNet', 'HourglassAENet', 'HRNet', 'MobileNetV2',
@@ -33,5 +37,5 @@ __all__ = [
     'SEResNet', 'SEResNeXt', 'ShuffleNetV1', 'ShuffleNetV2', 'CPM', 'RSN',
     'MSPN', 'ResNeSt', 'VGG', 'TCN', 'ViPNAS_ResNet', 'ViPNAS_MobileNetV3',
     'LiteHRNet', 'V2VNet', 'HRFormer', 'PyramidVisionTransformer',
-    'PyramidVisionTransformerV2', 'SwinTransformer'
+    'PyramidVisionTransformerV2', 'SwinTransformer', 'I3D', 'TCFormer', 'IHRNet'
 ]

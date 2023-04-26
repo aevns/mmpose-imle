@@ -3,7 +3,7 @@ from functools import wraps
 from queue import Queue
 from typing import Any, Dict, List, Optional
 
-from mmengine import is_seq_of
+from mmcv import is_seq_of
 
 __all__ = ['BufferManager']
 
@@ -197,7 +197,7 @@ class BufferManager():
         buffer_info = {}
         for name, buffer in self._buffers.items():
             buffer_info[name] = {
-                'size': buffer.qsize(),
+                'size': buffer.size,
                 'maxsize': buffer.maxsize
             }
         return buffer_info

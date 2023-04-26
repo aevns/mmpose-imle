@@ -6,95 +6,82 @@ You can change the documentation language at the lower-left corner of the page.
 您可以在页面左下角切换文档语言。
 
 .. toctree::
-   :maxdepth: 1
-   :caption: Get Started
+   :maxdepth: 2
 
-   overview.md
-   installation.md
-   guide_to_framework.md
-   demos.md
-   contribution_guide.md
-   faq.md
+   install.md
+   get_started.md
+   demo.md
+   benchmark.md
+   inference_speed_summary.md
 
 .. toctree::
-   :maxdepth: 1
-   :caption: User Guides
+   :maxdepth: 2
+   :caption: Datasets
 
-   user_guides/inference.md
-   user_guides/configs.md
-   user_guides/prepare_datasets.md
-   user_guides/train_and_test.md
-
-.. toctree::
-   :maxdepth: 1
-   :caption: Advanced Guides
-
-   advanced_guides/codecs.md
-   advanced_guides/dataflow.md
-   advanced_guides/implement_new_models.md
-   advanced_guides/customize_datasets.md
-   advanced_guides/customize_transforms.md
-   advanced_guides/customize_optimizer.md
-   advanced_guides/customize_logging.md
-   advanced_guides/how_to_deploy.md
-   advanced_guides/model_analysis.md
-
-.. toctree::
-   :maxdepth: 1
-   :caption: Migration
-
-   migration.md
+   datasets.md
+   tasks/2d_body_keypoint.md
+   tasks/2d_wholebody_keypoint.md
+   tasks/2d_face_keypoint.md
+   tasks/2d_hand_keypoint.md
+   tasks/2d_fashion_landmark.md
+   tasks/2d_animal_keypoint.md
+   tasks/3d_body_keypoint.md
+   tasks/3d_body_mesh.md
+   tasks/3d_hand_keypoint.md
 
 .. toctree::
    :maxdepth: 2
    :caption: Model Zoo
 
-   model_zoo.txt
-   model_zoo/body_2d_keypoint.md
-   model_zoo/face_2d_keypoint.md
-   model_zoo/hand_2d_keypoint.md
-   model_zoo/wholebody_2d_keypoint.md
-   model_zoo/animal_2d_keypoint.md
+   modelzoo.md
+   topics/animal.md
+   topics/body(2d,kpt,sview,img).md
+   topics/body(2d,kpt,sview,vid).md
+   topics/body(3d,kpt,sview,img).md
+   topics/body(3d,kpt,sview,vid).md
+   topics/body(3d,kpt,mview,img).md
+   topics/body(3d,mesh,sview,img).md
+   topics/face.md
+   topics/fashion.md
+   topics/hand(2d,kpt,rgb,img).md
+   topics/hand(3d,kpt,rgb,img).md
+   topics/hand(gesture,rgbd,vid).md
+   topics/wholebody.md
 
 .. toctree::
    :maxdepth: 2
    :caption: Model Zoo (by paper)
 
-   model_zoo_papers/algorithms.md
-   model_zoo_papers/backbones.md
-   model_zoo_papers/techniques.md
-   model_zoo_papers/datasets.md
+   papers/algorithms.md
+   papers/backbones.md
+   papers/datasets.md
+   papers/techniques.md
 
 .. toctree::
    :maxdepth: 2
-   :caption: Dataset Zoo
+   :caption: Tutorials
 
-   dataset_zoo.md
-   dataset_zoo/2d_body_keypoint.md
-   dataset_zoo/2d_wholebody_keypoint.md
-   dataset_zoo/2d_face_keypoint.md
-   dataset_zoo/2d_hand_keypoint.md
-   dataset_zoo/2d_fashion_landmark.md
-   dataset_zoo/2d_animal_keypoint.md
-   dataset_zoo/3d_body_keypoint.md
-   dataset_zoo/3d_hand_keypoint.md
-   dataset_zoo/dataset_tools.md
+   tutorials/0_config.md
+   tutorials/1_finetune.md
+   tutorials/2_new_dataset.md
+   tutorials/3_data_pipeline.md
+   tutorials/4_new_modules.md
+   tutorials/5_export_model.md
+   tutorials/6_customize_runtime.md
+   tutorials/7_webcam_api.md
 
 .. toctree::
-   :maxdepth: 1
-   :caption: Projects
+   :maxdepth: 2
+   :caption: Useful Tools and Scripts
 
-   projects/community_projects.md
-   projects/projects.md
+   useful_tools.md
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
    :caption: Notes
 
-   notes/ecosystem.md
-   notes/changelog.md
-   notes/benchmark.md
-   notes/pytorch_2.md
+   changelog.md
+   faq.md
 
 .. toctree::
    :caption: API Reference
@@ -102,10 +89,9 @@ You can change the documentation language at the lower-left corner of the page.
    api.rst
 
 .. toctree::
-   :caption: Switch Language
+   :caption: Languages
 
-   switch_language.md
-
+   language.md
 
 
 Indices and tables

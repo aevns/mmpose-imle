@@ -4,9 +4,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint as cp
 from mmcv.cnn import build_conv_layer, build_norm_layer
-from mmengine.model import BaseModule
 
-from mmpose.registry import MODELS
+from ..builder import BACKBONES
 from .resnet import Bottleneck as _Bottleneck
 from .resnet import ResLayer, ResNetV1d
 
@@ -35,7 +34,7 @@ class RSoftmax(nn.Module):
         return x
 
 
-class SplitAttentionConv2d(BaseModule):
+class SplitAttentionConv2d(nn.Module):
     """Split-Attention Conv2d.
 
     Args:
@@ -52,8 +51,6 @@ class SplitAttentionConv2d(BaseModule):
         conv_cfg (dict): Config dict for convolution layer. Default: None,
             which means using conv2d.
         norm_cfg (dict): Config dict for normalization layer. Default: None.
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default: None
     """
 
     def __init__(self,
@@ -67,9 +64,8 @@ class SplitAttentionConv2d(BaseModule):
                  radix=2,
                  reduction_factor=4,
                  conv_cfg=None,
-                 norm_cfg=dict(type='BN'),
-                 init_cfg=None):
-        super().__init__(init_cfg=init_cfg)
+                 norm_cfg=dict(type='BN')):
+        super().__init__()
         inter_channels = max(in_channels * radix // reduction_factor, 32)
         self.radix = radix
         self.groups = groups
@@ -161,8 +157,6 @@ class Bottleneck(_Bottleneck):
             Default: dict(type='BN')
         with_cp (bool): Use checkpoint or not. Using checkpoint will save some
             memory while slowing down the training speed.
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default: None
     """
 
     def __init__(self,
@@ -262,7 +256,7 @@ class Bottleneck(_Bottleneck):
         return out
 
 
-@MODELS.register_module()
+@BACKBONES.register_module()
 class ResNeSt(ResNetV1d):
     """ResNeSt backbone.
 
@@ -308,15 +302,6 @@ class ResNeSt(ResNetV1d):
             memory while slowing down the training speed. Default: False.
         zero_init_residual (bool): Whether to use zero init for last norm layer
             in resblocks to let them behave as identity. Default: True.
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default:
-            ``[
-                dict(type='Kaiming', layer=['Conv2d']),
-                dict(
-                    type='Constant',
-                    val=1,
-                    layer=['_BatchNorm', 'GroupNorm'])
-            ]``
     """
 
     arch_settings = {

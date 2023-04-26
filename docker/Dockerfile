@@ -1,5 +1,5 @@
-ARG PYTORCH="1.8.1"
-ARG CUDA="10.2"
+ARG PYTORCH="1.6.0"
+ARG CUDA="10.1"
 ARG CUDNN="7"
 
 FROM pytorch/pytorch:${PYTORCH}-cuda${CUDA}-cudnn${CUDNN}-devel
@@ -20,15 +20,15 @@ RUN apt-get update && apt-get install -y git ninja-build libglib2.0-0 libsm6 lib
 RUN pip install cython
 RUN pip install xtcocotools
 
-# Install MMEngine and MMCV
-RUN pip install openmim
-RUN mim install mmengine "mmcv>=2.0.0"
+# Install MMCV
+RUN pip install --no-cache-dir --upgrade pip wheel setuptools
+RUN pip install --no-cache-dir mmcv-full==1.3.17 -f https://download.openmmlab.com/mmcv/dist/cu101/torch1.6.0/index.html
 
 # Install MMPose
 RUN conda clean --all
 RUN git clone https://github.com/open-mmlab/mmpose.git /mmpose
 WORKDIR /mmpose
-RUN git checkout main
+RUN mkdir -p /mmpose/data
 ENV FORCE_CUDA="1"
 RUN pip install -r requirements/build.txt
 RUN pip install --no-cache-dir -e .

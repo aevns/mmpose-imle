@@ -5,6 +5,6 @@
     width: 120px;
 }
 
-table.autosummary td {
-    width: 35%
+table.colwidths-auto td {
+    width: 50%
 }

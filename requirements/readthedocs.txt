@@ -1,9 +1,9 @@
-mmcv>=2.0.0rc4
-mmengine>=0.6.0,<1.0.0
+mmcv-full
 munkres
+poseval@git+https://github.com/svenkreiss/poseval.git
 regex
 scipy
 titlecase
-torch>1.6
+torch
 torchvision
-xtcocotools>=1.13
+xtcocotools>=1.8

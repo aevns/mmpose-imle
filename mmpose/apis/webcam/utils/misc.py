@@ -11,7 +11,6 @@ from urllib.request import urlopen
 
 import cv2
 import numpy as np
-from mmengine import mkdir_or_exist
 from torch.hub import HASH_REGEX, download_url_to_file
 
 
@@ -81,8 +80,16 @@ def load_image_from_disk_or_url(filename: str,
         return image
 
 
+def mkdir_or_exist(dir_name: str, mode: int = 0o777):
+    """Create a directory if it doesn't exist."""
+    if dir_name == '':
+        return
+    dir_name = osp.expanduser(dir_name)
+    os.makedirs(dir_name, mode=mode, exist_ok=True)
+
+
 def get_cached_file_path(url: str,
-                         save_dir: str,
+                         save_dir: Optional[str] = None,
                          progress: bool = True,
                          check_hash: bool = False,
                          file_name: Optional[str] = None) -> str:
@@ -97,7 +104,7 @@ def get_cached_file_path(url: str,
 
     Args:
         url (str): URL of the object to download
-        save_dir (str): directory in which to save the object
+        save_dir (str, optional): directory in which to save the object
         progress (bool): whether or not to display a progress bar
             to stderr. Default: ``True``
         check_hash(bool): If True, the filename part of the URL
@@ -112,6 +119,8 @@ def get_cached_file_path(url: str,
     Returns:
         str: The path to the cached file.
     """
+    if save_dir is None:
+        save_dir = os.path.join('webcam_resources')
 
     mkdir_or_exist(save_dir)
 
@@ -167,10 +176,9 @@ def screen_matting(img: np.ndarray,
                 color_low = (230, 230, 230)
                 color_high = (255, 255, 255)
             else:
-                raise NotImplementedError(f'Not supported color: {color}.')
+                NotImplementedError(f'Not supported color: {color}.')
         else:
-            raise ValueError(
-                'color or color_high | color_low should be given.')
+            ValueError('color or color_high | color_low should be given.')
 
     mask = cv2.inRange(img, np.array(color_low), np.array(color_high)) == 0
 
@@ -301,12 +309,10 @@ def copy_and_paste(
 
         mask_inst = mask[int(bbox[1]):int(bbox[3]), int(bbox[0]):int(bbox[2])]
         img_inst = img[int(bbox[1]):int(bbox[3]), int(bbox[0]):int(bbox[2])]
-        img_inst = cv2.resize(
-            img_inst.astype('float32'),
-            (int(resize_rate * instance_w), int(resize_rate * instance_h)))
-        img_inst = img_inst.astype(background_img.dtype)
+        img_inst = cv2.resize(img_inst, (int(
+            resize_rate * instance_w), int(resize_rate * instance_h)))
         mask_inst = cv2.resize(
-            mask_inst.astype('float32'),
+            mask_inst,
             (int(resize_rate * instance_w), int(resize_rate * instance_h)),
             interpolation=cv2.INTER_NEAREST)
 

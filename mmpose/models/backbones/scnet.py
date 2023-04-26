@@ -6,13 +6,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint as cp
 from mmcv.cnn import build_conv_layer, build_norm_layer
-from mmengine.model import BaseModule
 
-from mmpose.registry import MODELS
+from ..builder import BACKBONES
 from .resnet import Bottleneck, ResNet
 
 
-class SCConv(BaseModule):
+class SCConv(nn.Module):
     """SCConv (Self-calibrated Convolution)
 
     Args:
@@ -24,8 +23,6 @@ class SCConv(BaseModule):
             Default: None
         norm_cfg (dict): dictionary to construct and config norm layer.
             Default: dict(type='BN')
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default: None
     """
 
     def __init__(self,
@@ -34,11 +31,10 @@ class SCConv(BaseModule):
                  stride,
                  pooling_r,
                  conv_cfg=None,
-                 norm_cfg=dict(type='BN', momentum=0.1),
-                 init_cfg=None):
+                 norm_cfg=dict(type='BN', momentum=0.1)):
         # Protect mutable default arguments
         norm_cfg = copy.deepcopy(norm_cfg)
-        super().__init__(init_cfg=init_cfg)
+        super().__init__()
 
         assert in_channels == out_channels
 
@@ -192,7 +188,7 @@ class SCBottleneck(Bottleneck):
         return out
 
 
-@MODELS.register_module()
+@BACKBONES.register_module()
 class SCNet(ResNet):
     """SCNet backbone.
 

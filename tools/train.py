@@ -1,10 +1,23 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import argparse
+import copy
 import os
 import os.path as osp
+import time
+import warnings
 
-from mmengine.config import Config, DictAction
-from mmengine.runner import Runner
+import mmcv
+import torch
+import torch.distributed as dist
+from mmcv import Config, DictAction
+from mmcv.runner import get_dist_info, init_dist, set_random_seed
+from mmcv.utils import get_git_hash
+
+from mmpose import __version__
+from mmpose.apis import init_random_seed, train_model
+from mmpose.datasets import build_dataset
+from mmpose.models import build_posenet
+from mmpose.utils import collect_env, get_root_logger, setup_multi_processes
 
 
 def parse_args():
@@ -12,63 +25,56 @@ def parse_args():
     parser.add_argument('config', help='train config file path')
     parser.add_argument('--work-dir', help='the dir to save logs and models')
     parser.add_argument(
-        '--resume',
-        nargs='?',
-        type=str,
-        const='auto',
-        help='If specify checkpint path, resume from it, while if not '
-        'specify, try to auto resume from the latest checkpoint '
-        'in the work directory.')
-    parser.add_argument(
-        '--amp',
-        action='store_true',
-        default=False,
-        help='enable automatic-mixed-precision training')
+        '--resume-from', help='the checkpoint file to resume from')
     parser.add_argument(
         '--no-validate',
         action='store_true',
         help='whether not to evaluate the checkpoint during training')
-    parser.add_argument(
-        '--auto-scale-lr',
-        action='store_true',
-        help='whether to auto scale the learning rate according to the '
-        'actual batch size and the original batch size.')
-    parser.add_argument(
-        '--show-dir',
-        help='directory where the visualization images will be saved.')
-    parser.add_argument(
-        '--show',
-        action='store_true',
-        help='whether to display the prediction results in a window.')
-    parser.add_argument(
-        '--interval',
+    group_gpus = parser.add_mutually_exclusive_group()
+    group_gpus.add_argument(
+        '--gpus',
         type=int,
-        default=1,
-        help='visualize per interval samples.')
+        help='(Deprecated, please use --gpu-id) number of gpus to use '
+        '(only applicable to non-distributed training)')
+    group_gpus.add_argument(
+        '--gpu-ids',
+        type=int,
+        nargs='+',
+        help='(Deprecated, please use --gpu-id) ids of gpus to use '
+        '(only applicable to non-distributed training)')
+    group_gpus.add_argument(
+        '--gpu-id',
+        type=int,
+        default=0,
+        help='id of gpu to use '
+        '(only applicable to non-distributed training)')
+    parser.add_argument('--seed', type=int, default=None, help='random seed')
     parser.add_argument(
-        '--wait-time',
-        type=float,
-        default=1,
-        help='display time of every window. (second)')
+        '--diff_seed',
+        action='store_true',
+        help='Whether or not set different seeds for different ranks')
+    parser.add_argument(
+        '--deterministic',
+        action='store_true',
+        help='whether to set deterministic options for CUDNN backend.')
     parser.add_argument(
         '--cfg-options',
         nargs='+',
         action=DictAction,
+        default={},
         help='override some settings in the used config, the key-value pair '
-        'in xxx=yyy format will be merged into config file. If the value to '
-        'be overwritten is a list, it should be like key="[a,b]" or key=a,b '
-        'It also allows nested list/tuple values, e.g. key="[(a,b),(c,d)]" '
-        'Note that the quotation marks are necessary and that no white space '
-        'is allowed.')
+        'in xxx=yyy format will be merged into config file. For example, '
+        "'--cfg-options model.backbone.depth=18 model.backbone.with_cp=True'")
     parser.add_argument(
         '--launcher',
         choices=['none', 'pytorch', 'slurm', 'mpi'],
         default='none',
         help='job launcher')
-    # When using PyTorch version >= 2.0.0, the `torch.distributed.launch`
-    # will pass the `--local-rank` parameter to `tools/train.py` instead
-    # of `--local_rank`.
-    parser.add_argument('--local_rank', '--local-rank', type=int, default=0)
+    parser.add_argument('--local_rank', type=int, default=0)
+    parser.add_argument(
+        '--autoscale-lr',
+        action='store_true',
+        help='automatically scale lr with the number of gpus')
     args = parser.parse_args()
     if 'LOCAL_RANK' not in os.environ:
         os.environ['LOCAL_RANK'] = str(args.local_rank)
@@ -76,14 +82,20 @@ def parse_args():
     return args
 
 
-def merge_args(cfg, args):
-    """Merge CLI arguments to config."""
-    if args.no_validate:
-        cfg.val_cfg = None
-        cfg.val_dataloader = None
-        cfg.val_evaluator = None
+def main():
+    args = parse_args()
 
-    cfg.launcher = args.launcher
+    cfg = Config.fromfile(args.config)
+
+    if args.cfg_options is not None:
+        cfg.merge_from_dict(args.cfg_options)
+
+    # set multi-process settings
+    setup_multi_processes(cfg)
+
+    # set cudnn_benchmark
+    if cfg.get('cudnn_benchmark', False):
+        torch.backends.cudnn.benchmark = True
 
     # work_dir is determined in this priority: CLI > segment in file > filename
     if args.work_dir is not None:
@@ -93,67 +105,96 @@ def merge_args(cfg, args):
         # use config filename as default work_dir if cfg.work_dir is None
         cfg.work_dir = osp.join('./work_dirs',
                                 osp.splitext(osp.basename(args.config))[0])
+    if args.resume_from is not None:
+        cfg.resume_from = args.resume_from
+    if args.gpus is not None:
+        cfg.gpu_ids = range(1)
+        warnings.warn('`--gpus` is deprecated because we only support '
+                      'single GPU mode in non-distributed training. '
+                      'Use `gpus=1` now.')
+    if args.gpu_ids is not None:
+        cfg.gpu_ids = args.gpu_ids[0:1]
+        warnings.warn('`--gpu-ids` is deprecated, please use `--gpu-id`. '
+                      'Because we only support single GPU mode in '
+                      'non-distributed training. Use the first GPU '
+                      'in `gpu_ids` now.')
+    if args.gpus is None and args.gpu_ids is None:
+        cfg.gpu_ids = [args.gpu_id]
 
-    # enable automatic-mixed-precision training
-    if args.amp is True:
-        optim_wrapper = cfg.optim_wrapper.get('type', 'OptimWrapper')
-        assert optim_wrapper in ['OptimWrapper', 'AmpOptimWrapper'], \
-            '`--amp` is not supported custom optimizer wrapper type ' \
-            f'`{optim_wrapper}.'
-        cfg.optim_wrapper.type = 'AmpOptimWrapper'
-        cfg.optim_wrapper.setdefault('loss_scale', 'dynamic')
+    if args.autoscale_lr:
+        # apply the linear scaling rule (https://arxiv.org/abs/1706.02677)
+        cfg.optimizer['lr'] = cfg.optimizer['lr'] * len(cfg.gpu_ids) / 8
 
-    # resume training
-    if args.resume == 'auto':
-        cfg.resume = True
-        cfg.load_from = None
-    elif args.resume is not None:
-        cfg.resume = True
-        cfg.load_from = args.resume
+    # init distributed env first, since logger depends on the dist info.
+    if args.launcher == 'none':
+        distributed = False
+        if len(cfg.gpu_ids) > 1:
+            warnings.warn(
+                f'We treat {cfg.gpu_ids} as gpu-ids, and reset to '
+                f'{cfg.gpu_ids[0:1]} as gpu-ids to avoid potential error in '
+                'non-distribute training time.')
+            cfg.gpu_ids = cfg.gpu_ids[0:1]
+    else:
+        distributed = True
+        init_dist(args.launcher, **cfg.dist_params)
+        # re-set gpu_ids with distributed training mode
+        _, world_size = get_dist_info()
+        cfg.gpu_ids = range(world_size)
 
-    # enable auto scale learning rate
-    if args.auto_scale_lr:
-        cfg.auto_scale_lr.enable = True
+    # create work_dir
+    mmcv.mkdir_or_exist(osp.abspath(cfg.work_dir))
+    # init the logger before other steps
+    timestamp = time.strftime('%Y%m%d_%H%M%S', time.localtime())
+    log_file = osp.join(cfg.work_dir, f'{timestamp}.log')
+    logger = get_root_logger(log_file=log_file, log_level=cfg.log_level)
 
-    # visualization-
-    if args.show or (args.show_dir is not None):
-        assert 'visualization' in cfg.default_hooks, \
-            'PoseVisualizationHook is not set in the ' \
-            '`default_hooks` field of config. Please set ' \
-            '`visualization=dict(type="PoseVisualizationHook")`'
+    # init the meta dict to record some important information such as
+    # environment info and seed, which will be logged
+    meta = dict()
+    # log env info
+    env_info_dict = collect_env()
+    env_info = '\n'.join([(f'{k}: {v}') for k, v in env_info_dict.items()])
+    dash_line = '-' * 60 + '\n'
+    logger.info('Environment info:\n' + dash_line + env_info + '\n' +
+                dash_line)
+    meta['env_info'] = env_info
 
-        cfg.default_hooks.visualization.enable = True
-        cfg.default_hooks.visualization.show = args.show
-        if args.show:
-            cfg.default_hooks.visualization.wait_time = args.wait_time
-        cfg.default_hooks.visualization.out_dir = args.show_dir
-        cfg.default_hooks.visualization.interval = args.interval
+    # log some basic info
+    logger.info(f'Distributed training: {distributed}')
+    logger.info(f'Config:\n{cfg.pretty_text}')
 
-    if args.cfg_options is not None:
-        cfg.merge_from_dict(args.cfg_options)
+    # set random seeds
+    seed = init_random_seed(args.seed)
+    seed = seed + dist.get_rank() if args.diff_seed else seed
+    logger.info(f'Set random seed to {seed}, '
+                f'deterministic: {args.deterministic}')
+    set_random_seed(seed, deterministic=args.deterministic)
+    cfg.seed = seed
+    meta['seed'] = seed
 
-    return cfg
+    model = build_posenet(cfg.model)
+    datasets = [build_dataset(cfg.data.train)]
 
+    if len(cfg.workflow) == 2:
+        val_dataset = copy.deepcopy(cfg.data.val)
+        val_dataset.pipeline = cfg.data.train.pipeline
+        datasets.append(build_dataset(val_dataset))
 
-def main():
-    args = parse_args()
-
-    # load config
-    cfg = Config.fromfile(args.config)
-
-    # merge CLI arguments to config
-    cfg = merge_args(cfg, args)
-
-    # set preprocess configs to model
-    if 'preprocess_cfg' in cfg:
-        cfg.model.setdefault('data_preprocessor',
-                             cfg.get('preprocess_cfg', {}))
-
-    # build the runner from config
-    runner = Runner.from_cfg(cfg)
-
-    # start training
-    runner.train()
+    if cfg.checkpoint_config is not None:
+        # save mmpose version, config file content
+        # checkpoints as meta data
+        cfg.checkpoint_config.meta = dict(
+            mmpose_version=__version__ + get_git_hash(digits=7),
+            config=cfg.pretty_text,
+        )
+    train_model(
+        model,
+        datasets,
+        cfg,
+        distributed=distributed,
+        validate=(not args.no_validate),
+        timestamp=timestamp,
+        meta=meta)
 
 
 if __name__ == '__main__':

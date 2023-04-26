@@ -81,10 +81,9 @@ class SunglassesEffectNode(BaseVisualizerNode):
 
         objects = input_msg.get_objects(lambda x: 'keypoints' in x)
 
-        for dataset_meta, group in groupby(objects,
-                                           lambda x: x['dataset_meta']):
-            left_eye_index, right_eye_index = get_eye_keypoint_ids(
-                dataset_meta)
+        for model_cfg, group in groupby(objects,
+                                        lambda x: x['pose_model_cfg']):
+            left_eye_index, right_eye_index = get_eye_keypoint_ids(model_cfg)
             canvas = self.apply_sunglasses_effect(canvas, group,
                                                   left_eye_index,
                                                   right_eye_index)
@@ -114,10 +113,10 @@ class SunglassesEffectNode(BaseVisualizerNode):
 
         for obj in objects:
             kpts = obj['keypoints']
-            kpt_scores = obj['keypoint_scores']
 
-            if kpt_scores[left_eye_index] < self.kpt_thr or kpt_scores[
-                    right_eye_index] < self.kpt_thr:
+            if kpts[left_eye_index,
+                    2] < self.kpt_thr or kpts[right_eye_index,
+                                              2] < self.kpt_thr:
                 continue
 
             kpt_leye = kpts[left_eye_index, :2]

@@ -2,25 +2,57 @@
 import argparse
 import os
 import os.path as osp
+import warnings
 
-import mmengine
-from mmengine.config import Config, DictAction
-from mmengine.hooks import Hook
-from mmengine.runner import Runner
+import mmcv
+import torch
+from mmcv import Config, DictAction
+from mmcv.cnn import fuse_conv_bn
+from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
+from mmcv.runner import get_dist_info, init_dist, load_checkpoint
+
+from mmpose.apis import multi_gpu_test, single_gpu_test
+from mmpose.datasets import build_dataloader, build_dataset
+from mmpose.models import build_posenet
+from mmpose.utils import setup_multi_processes
+
+try:
+    from mmcv.runner import wrap_fp16_model
+except ImportError:
+    warnings.warn('auto_fp16 from mmpose will be deprecated from v0.15.0'
+                  'Please install mmcv>=1.1.4')
+    from mmpose.core import wrap_fp16_model
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(
-        description='MMPose test (and eval) model')
+    parser = argparse.ArgumentParser(description='mmpose test model')
     parser.add_argument('config', help='test config file path')
     parser.add_argument('checkpoint', help='checkpoint file')
+    parser.add_argument('--out', help='output result file')
     parser.add_argument(
-        '--work-dir', help='the directory to save evaluation results')
-    parser.add_argument('--out', help='the file to save metric results.')
+        '--work-dir', help='the dir to save evaluation results')
     parser.add_argument(
-        '--dump',
-        type=str,
-        help='dump predictions to a pickle file for offline evaluation')
+        '--fuse-conv-bn',
+        action='store_true',
+        help='Whether to fuse conv and bn, this will slightly increase'
+        'the inference speed')
+    parser.add_argument(
+        '--gpu-id',
+        type=int,
+        default=0,
+        help='id of gpu to use '
+        '(only applicable to non-distributed testing)')
+    parser.add_argument(
+        '--eval',
+        default=None,
+        nargs='+',
+        help='evaluation metric, which depends on the dataset,'
+        ' e.g., "mAP" for MSCOCO')
+    parser.add_argument(
+        '--gpu-collect',
+        action='store_true',
+        help='whether to use gpu to collect results')
+    parser.add_argument('--tmpdir', help='tmp dir for writing some results')
     parser.add_argument(
         '--cfg-options',
         nargs='+',
@@ -29,23 +61,6 @@ def parse_args():
         help='override some settings in the used config, the key-value pair '
         'in xxx=yyy format will be merged into config file. For example, '
         "'--cfg-options model.backbone.depth=18 model.backbone.with_cp=True'")
-    parser.add_argument(
-        '--show-dir',
-        help='directory where the visualization images will be saved.')
-    parser.add_argument(
-        '--show',
-        action='store_true',
-        help='whether to display the prediction results in a window.')
-    parser.add_argument(
-        '--interval',
-        type=int,
-        default=1,
-        help='visualize per interval samples.')
-    parser.add_argument(
-        '--wait-time',
-        type=float,
-        default=1,
-        help='display time of every window. (second)')
     parser.add_argument(
         '--launcher',
         choices=['none', 'pytorch', 'slurm', 'mpi'],
@@ -58,44 +73,33 @@ def parse_args():
     return args
 
 
-def merge_args(cfg, args):
-    """Merge CLI arguments to config."""
-    # -------------------- visualization --------------------
-    if args.show or (args.show_dir is not None):
-        assert 'visualization' in cfg.default_hooks, \
-            'PoseVisualizationHook is not set in the ' \
-            '`default_hooks` field of config. Please set ' \
-            '`visualization=dict(type="PoseVisualizationHook")`'
-
-        cfg.default_hooks.visualization.enable = True
-        cfg.default_hooks.visualization.show = args.show
-        if args.show:
-            cfg.default_hooks.visualization.wait_time = args.wait_time
-        cfg.default_hooks.visualization.out_dir = args.show_dir
-        cfg.default_hooks.visualization.interval = args.interval
-
-    # -------------------- Dump predictions --------------------
-    if args.dump is not None:
-        assert args.dump.endswith(('.pkl', '.pickle')), \
-            'The dump file must be a pkl file.'
-        dump_metric = dict(type='DumpResults', out_file_path=args.dump)
-        if isinstance(cfg.test_evaluator, (list, tuple)):
-            cfg.test_evaluator = list(cfg.test_evaluator).append(dump_metric)
-        else:
-            cfg.test_evaluator = [cfg.test_evaluator, dump_metric]
-
-    return cfg
+def merge_configs(cfg1, cfg2):
+    # Merge cfg2 into cfg1
+    # Overwrite cfg1 if repeated, ignore if value is None.
+    cfg1 = {} if cfg1 is None else cfg1.copy()
+    cfg2 = {} if cfg2 is None else cfg2
+    for k, v in cfg2.items():
+        if v:
+            cfg1[k] = v
+    return cfg1
 
 
 def main():
     args = parse_args()
 
-    # load config
     cfg = Config.fromfile(args.config)
-    cfg = merge_args(cfg, args)
-    cfg.launcher = args.launcher
+
     if args.cfg_options is not None:
         cfg.merge_from_dict(args.cfg_options)
+
+    # set multi-process settings
+    setup_multi_processes(cfg)
+
+    # set cudnn_benchmark
+    if cfg.get('cudnn_benchmark', False):
+        torch.backends.cudnn.benchmark = True
+    cfg.model.pretrained = None
+    cfg.data.test.test_mode = True
 
     # work_dir is determined in this priority: CLI > segment in file > filename
     if args.work_dir is not None:
@@ -106,23 +110,74 @@ def main():
         cfg.work_dir = osp.join('./work_dirs',
                                 osp.splitext(osp.basename(args.config))[0])
 
-    cfg.load_from = args.checkpoint
+    mmcv.mkdir_or_exist(osp.abspath(cfg.work_dir))
 
-    # build the runner from config
-    runner = Runner.from_cfg(cfg)
+    # init distributed env first, since logger depends on the dist info.
+    if args.launcher == 'none':
+        distributed = False
+    else:
+        distributed = True
+        init_dist(args.launcher, **cfg.dist_params)
 
-    if args.out:
+    # build the dataloader
+    dataset = build_dataset(cfg.data.test, dict(test_mode=True))
+    # step 1: give default values and override (if exist) from cfg.data
+    loader_cfg = {
+        **dict(seed=cfg.get('seed'), drop_last=False, dist=distributed),
+        **({} if torch.__version__ != 'parrots' else dict(
+               prefetch_num=2,
+               pin_memory=False,
+           )),
+        **dict((k, cfg.data[k]) for k in [
+                   'seed',
+                   'prefetch_num',
+                   'pin_memory',
+                   'persistent_workers',
+               ] if k in cfg.data)
+    }
+    # step2: cfg.data.test_dataloader has higher priority
+    test_loader_cfg = {
+        **loader_cfg,
+        **dict(shuffle=False, drop_last=False),
+        **dict(workers_per_gpu=cfg.data.get('workers_per_gpu', 1)),
+        **dict(samples_per_gpu=cfg.data.get('samples_per_gpu', 1)),
+        **cfg.data.get('test_dataloader', {})
+    }
+    data_loader = build_dataloader(dataset, **test_loader_cfg)
 
-        class SaveMetricHook(Hook):
+    # build the model and load checkpoint
+    model = build_posenet(cfg.model)
+    fp16_cfg = cfg.get('fp16', None)
+    if fp16_cfg is not None:
+        wrap_fp16_model(model)
+    load_checkpoint(model, args.checkpoint, map_location='cpu')
 
-            def after_test_epoch(self, _, metrics=None):
-                if metrics is not None:
-                    mmengine.dump(metrics, args.out)
+    if args.fuse_conv_bn:
+        model = fuse_conv_bn(model)
 
-        runner.register_hook(SaveMetricHook(), 'LOWEST')
+    if not distributed:
+        model = MMDataParallel(model, device_ids=[args.gpu_id])
+        outputs = single_gpu_test(model, data_loader)
+    else:
+        model = MMDistributedDataParallel(
+            model.cuda(),
+            device_ids=[torch.cuda.current_device()],
+            broadcast_buffers=False)
+        outputs = multi_gpu_test(model, data_loader, args.tmpdir,
+                                 args.gpu_collect)
 
-    # start testing
-    runner.test()
+    rank, _ = get_dist_info()
+    eval_config = cfg.get('evaluation', {})
+    eval_config = merge_configs(eval_config, dict(metric=args.eval))
+
+    if rank == 0:
+        if args.out:
+            print(f'\nwriting results to {args.out}')
+            mmcv.dump(outputs, args.out)
+
+        results = dataset.evaluate(outputs, cfg.work_dir, **eval_config)
+        for k, v in sorted(results.items()):
+            print(f'{k}: {v}')
 
 
 if __name__ == '__main__':

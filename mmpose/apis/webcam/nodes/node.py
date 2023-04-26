@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from threading import Thread
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
-from mmengine import is_method_overridden
+from mmcv.utils.misc import is_method_overridden
 
 from mmpose.utils import StopWatch
 from ..utils import Message, VideoEndingMessage, limit_max_fps

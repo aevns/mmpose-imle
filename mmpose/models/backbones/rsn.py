@@ -4,14 +4,14 @@ import copy as cp
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from mmcv.cnn import ConvModule, MaxPool2d
-from mmengine.model import BaseModule
+from mmcv.cnn import (ConvModule, MaxPool2d, constant_init, kaiming_init,
+                      normal_init)
 
-from mmpose.registry import MODELS
+from ..builder import BACKBONES
 from .base_backbone import BaseBackbone
 
 
-class RSB(BaseModule):
+class RSB(nn.Module):
     """Residual Steps block for RSN. Paper ref: Cai et al. "Learning Delicate
     Local Representations for Multi-Person Pose Estimation" (ECCV 2020).
 
@@ -28,8 +28,6 @@ class RSB(BaseModule):
             Default:26.
         res_top_channels (int): Number of channels of feature output by
             ResNet_top. Default:64.
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default: None
     """
 
     expansion = 1
@@ -43,11 +41,10 @@ class RSB(BaseModule):
                  with_cp=False,
                  norm_cfg=dict(type='BN'),
                  expand_times=26,
-                 res_top_channels=64,
-                 init_cfg=None):
+                 res_top_channels=64):
         # Protect mutable default arguments
         norm_cfg = cp.deepcopy(norm_cfg)
-        super().__init__(init_cfg=init_cfg)
+        super().__init__()
         assert num_steps > 1
         self.in_channels = in_channels
         self.branch_channels = self.in_channels * expand_times
@@ -125,7 +122,7 @@ class RSB(BaseModule):
         return out
 
 
-class Downsample_module(BaseModule):
+class Downsample_module(nn.Module):
     """Downsample module for RSN.
 
     Args:
@@ -141,8 +138,6 @@ class Downsample_module(BaseModule):
             downsample module. Default: 64
         expand_times (int): Times by which the in_channels are expanded.
             Default:26.
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default: None
     """
 
     def __init__(self,
@@ -153,11 +148,10 @@ class Downsample_module(BaseModule):
                  has_skip=False,
                  norm_cfg=dict(type='BN'),
                  in_channels=64,
-                 expand_times=26,
-                 init_cfg=None):
+                 expand_times=26):
         # Protect mutable default arguments
         norm_cfg = cp.deepcopy(norm_cfg)
-        super().__init__(init_cfg=init_cfg)
+        super().__init__()
         self.has_skip = has_skip
         self.in_channels = in_channels
         assert len(num_blocks) == num_units
@@ -239,7 +233,7 @@ class Downsample_module(BaseModule):
         return tuple(out)
 
 
-class Upsample_unit(BaseModule):
+class Upsample_unit(nn.Module):
     """Upsample unit for upsample module.
 
     Args:
@@ -259,8 +253,6 @@ class Upsample_unit(BaseModule):
             Default: dict(type='BN')
         out_channels (in): Number of channels of feature output by upsample
             module. Must equal to in_channels of downsample module. Default:64
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default: None
     """
 
     def __init__(self,
@@ -271,11 +263,10 @@ class Upsample_unit(BaseModule):
                  gen_skip=False,
                  gen_cross_conv=False,
                  norm_cfg=dict(type='BN'),
-                 out_channels=64,
-                 init_cfg=None):
+                 out_channels=64):
         # Protect mutable default arguments
         norm_cfg = cp.deepcopy(norm_cfg)
-        super().__init__(init_cfg=init_cfg)
+        super().__init__()
         self.num_units = num_units
         self.norm_cfg = norm_cfg
         self.in_skip = ConvModule(
@@ -358,7 +349,7 @@ class Upsample_unit(BaseModule):
         return out, skip1, skip2, cross_conv
 
 
-class Upsample_module(BaseModule):
+class Upsample_module(nn.Module):
     """Upsample module for RSN.
 
     Args:
@@ -373,8 +364,6 @@ class Upsample_module(BaseModule):
             Default: dict(type='BN')
         out_channels (int): Number of channels of feature output by upsample
             module. Must equal to in_channels of downsample module. Default:64
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default: None
     """
 
     def __init__(self,
@@ -383,11 +372,10 @@ class Upsample_module(BaseModule):
                  gen_skip=False,
                  gen_cross_conv=False,
                  norm_cfg=dict(type='BN'),
-                 out_channels=64,
-                 init_cfg=None):
+                 out_channels=64):
         # Protect mutable default arguments
         norm_cfg = cp.deepcopy(norm_cfg)
-        super().__init__(init_cfg=init_cfg)
+        super().__init__()
         self.in_channels = list()
         for i in range(num_units):
             self.in_channels.append(RSB.expansion * out_channels * pow(2, i))
@@ -432,7 +420,7 @@ class Upsample_module(BaseModule):
         return out, skip1, skip2, cross_conv
 
 
-class Single_stage_RSN(BaseModule):
+class Single_stage_RSN(nn.Module):
     """Single_stage Residual Steps Network.
 
     Args:
@@ -453,8 +441,6 @@ class Single_stage_RSN(BaseModule):
             Default: 64.
         expand_times (int): Times by which the in_channels are expanded in RSB.
             Default:26.
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default: None
     """
 
     def __init__(self,
@@ -467,12 +453,11 @@ class Single_stage_RSN(BaseModule):
                  num_blocks=[2, 2, 2, 2],
                  norm_cfg=dict(type='BN'),
                  in_channels=64,
-                 expand_times=26,
-                 init_cfg=None):
+                 expand_times=26):
         # Protect mutable default arguments
         norm_cfg = cp.deepcopy(norm_cfg)
         num_blocks = cp.deepcopy(num_blocks)
-        super().__init__(init_cfg=init_cfg)
+        super().__init__()
         assert len(num_blocks) == num_units
         self.has_skip = has_skip
         self.gen_skip = gen_skip
@@ -496,21 +481,19 @@ class Single_stage_RSN(BaseModule):
         return out, skip1, skip2, cross_conv
 
 
-class ResNet_top(BaseModule):
+class ResNet_top(nn.Module):
     """ResNet top for RSN.
 
     Args:
         norm_cfg (dict): dictionary to construct and config norm layer.
             Default: dict(type='BN')
         channels (int): Number of channels of the feature output by ResNet_top.
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default: None
     """
 
-    def __init__(self, norm_cfg=dict(type='BN'), channels=64, init_cfg=None):
+    def __init__(self, norm_cfg=dict(type='BN'), channels=64):
         # Protect mutable default arguments
         norm_cfg = cp.deepcopy(norm_cfg)
-        super().__init__(init_cfg=init_cfg)
+        super().__init__()
         self.top = nn.Sequential(
             ConvModule(
                 3,
@@ -525,7 +508,7 @@ class ResNet_top(BaseModule):
         return self.top(img)
 
 
-@MODELS.register_module()
+@BACKBONES.register_module()
 class RSN(BaseBackbone):
     """Residual Steps Network backbone. Paper ref: Cai et al. "Learning
     Delicate Local Representations for Multi-Person Pose Estimation" (ECCV
@@ -546,19 +529,6 @@ class RSN(BaseBackbone):
             Default: 64.
         expand_times (int): Times by which the in_channels are expanded in RSB.
             Default:26.
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default:
-            ``[
-                dict(type='Kaiming', layer=['Conv2d']),
-                dict(
-                    type='Constant',
-                    val=1,
-                    layer=['_BatchNorm', 'GroupNorm']),
-                dict(
-                    type='Normal',
-                    std=0.01,
-                    layer=['Linear']),
-            ]``
     Example:
         >>> from mmpose.models import RSN
         >>> import torch
@@ -584,19 +554,11 @@ class RSN(BaseBackbone):
                  num_steps=4,
                  norm_cfg=dict(type='BN'),
                  res_top_channels=64,
-                 expand_times=26,
-                 init_cfg=[
-                     dict(type='Kaiming', layer=['Conv2d']),
-                     dict(
-                         type='Constant',
-                         val=1,
-                         layer=['_BatchNorm', 'GroupNorm']),
-                     dict(type='Normal', std=0.01, layer=['Linear']),
-                 ]):
+                 expand_times=26):
         # Protect mutable default arguments
         norm_cfg = cp.deepcopy(norm_cfg)
         num_blocks = cp.deepcopy(num_blocks)
-        super().__init__(init_cfg=init_cfg)
+        super().__init__()
         self.unit_channels = unit_channels
         self.num_stages = num_stages
         self.num_units = num_units
@@ -638,3 +600,17 @@ class RSN(BaseBackbone):
             out_feats.append(out)
 
         return out_feats
+
+    def init_weights(self, pretrained=None):
+        """Initialize model weights."""
+        for m in self.multi_stage_rsn.modules():
+            if isinstance(m, nn.Conv2d):
+                kaiming_init(m)
+            elif isinstance(m, nn.BatchNorm2d):
+                constant_init(m, 1)
+            elif isinstance(m, nn.Linear):
+                normal_init(m, std=0.01)
+
+        for m in self.top.modules():
+            if isinstance(m, nn.Conv2d):
+                kaiming_init(m)

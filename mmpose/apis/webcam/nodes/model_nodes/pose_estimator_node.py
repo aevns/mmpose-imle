@@ -2,9 +2,9 @@
 from dataclasses import dataclass
 from typing import List, Optional, Union
 
-import numpy as np
-
-from mmpose.apis import inference_topdown, init_model
+from mmpose.apis import (get_track_id, inference_top_down_pose_model,
+                         init_pose_model)
+from mmpose.core import Smoother
 from ...utils import get_config_path
 from ..node import Node
 from ..registry import NODES
@@ -18,7 +18,7 @@ class TrackInfo:
 
 
 @NODES.register_module()
-class TopdownPoseEstimatorNode(Node):
+class TopDownPoseEstimatorNode(Node):
     """Perform top-down pose estimation using MMPose model.
 
     The node should be placed after an object detection node.
@@ -47,10 +47,15 @@ class TopdownPoseEstimatorNode(Node):
             apply pose estimation. See also ``class_ids``. Default: ``None``
         bbox_thr (float): Set a threshold to filter out objects with low bbox
             scores. Default: 0.5
+        smooth (bool): If set to ``True``, a :class:`Smoother` will be used to
+            refine the pose estimation result. Default: ``True``
+        smooth_filter_cfg (str): The filter config path to build the smoother.
+            Only valid when ``smooth==True``. By default, OneEuro filter will
+            be used.
 
     Example::
         >>> cfg = dict(
-        ...     type='TopdownPoseEstimatorNode',
+        ...     type='TopDownPoseEstimatorNode',
         ...     name='human pose estimator',
         ...     model_config='configs/wholebody/2d_kpt_sview_rgb_img/'
         ...     'topdown_heatmap/coco-wholebody/'
@@ -59,6 +64,7 @@ class TopdownPoseEstimatorNode(Node):
         ...     'top_down/vipnas/vipnas_mbv3_coco_wholebody_256x192_dark'
         ...     '-e2158108_20211205.pth',
         ...     labels=['person'],
+        ...     smooth=True,
         ...     input_buffer='det_result',
         ...     output_buffer='human_pose')
 
@@ -66,18 +72,21 @@ class TopdownPoseEstimatorNode(Node):
         >>> node = NODES.build(cfg)
     """
 
-    def __init__(self,
-                 name: str,
-                 model_config: str,
-                 model_checkpoint: str,
-                 input_buffer: str,
-                 output_buffer: Union[str, List[str]],
-                 enable_key: Optional[Union[str, int]] = None,
-                 enable: bool = True,
-                 device: str = 'cuda:0',
-                 class_ids: Optional[List[int]] = None,
-                 labels: Optional[List[str]] = None,
-                 bbox_thr: float = 0.5):
+    def __init__(
+            self,
+            name: str,
+            model_config: str,
+            model_checkpoint: str,
+            input_buffer: str,
+            output_buffer: Union[str, List[str]],
+            enable_key: Optional[Union[str, int]] = None,
+            enable: bool = True,
+            device: str = 'cuda:0',
+            class_ids: Optional[List[int]] = None,
+            labels: Optional[List[str]] = None,
+            bbox_thr: float = 0.5,
+            smooth: bool = False,
+            smooth_filter_cfg: str = 'configs/_base_/filters/one_euro.py'):
         super().__init__(name=name, enable_key=enable_key, enable=enable)
 
         # Init model
@@ -89,9 +98,17 @@ class TopdownPoseEstimatorNode(Node):
         self.labels = labels
         self.bbox_thr = bbox_thr
 
+        if smooth:
+            smooth_filter_cfg = get_config_path(smooth_filter_cfg, 'mmpose')
+            self.smoother = Smoother(smooth_filter_cfg, keypoint_dim=2)
+        else:
+            self.smoother = None
         # Init model
-        self.model = init_model(
+        self.model = init_pose_model(
             self.model_config, self.model_checkpoint, device=self.device)
+
+        # Store history for pose tracking
+        self.track_info = TrackInfo()
 
         # Register buffers
         self.register_input_buffer(input_buffer, 'input', trigger=True)
@@ -113,23 +130,28 @@ class TopdownPoseEstimatorNode(Node):
                 lambda x: x.get('label') in self.labels)
         else:
             objects = input_msg.get_objects()
+        # Inference pose
+        objects, _ = inference_top_down_pose_model(
+            self.model, img, objects, bbox_thr=self.bbox_thr, format='xyxy')
 
-        if len(objects) > 0:
-            # Inference pose
-            bboxes = np.stack([object['bbox'] for object in objects])
-            pose_results = inference_topdown(self.model, img, bboxes)
+        # Pose tracking
+        objects, next_id = get_track_id(
+            objects,
+            self.track_info.last_objects,
+            self.track_info.next_id,
+            use_oks=False,
+            tracking_thr=0.3)
 
-            # Update objects
-            for pose_result, object in zip(pose_results, objects):
-                pred_instances = pose_result.pred_instances
-                object['keypoints'] = pred_instances.keypoints[0]
-                object['keypoint_scores'] = pred_instances.keypoint_scores[0]
+        self.track_info.next_id = next_id
+        # Copy the prediction to avoid track_info being affected by smoothing
+        self.track_info.last_objects = [obj.copy() for obj in objects]
 
-                dataset_meta = self.model.dataset_meta.copy()
-                dataset_meta.update(object.get('dataset_meta', dict()))
-                object['dataset_meta'] = dataset_meta
-                object['pose_model_cfg'] = self.model.cfg
+        # Pose smoothing
+        if self.smoother:
+            objects = self.smoother.smooth(objects)
 
+        for obj in objects:
+            obj['pose_model_cfg'] = self.model.cfg
         input_msg.update_objects(objects)
 
         return input_msg

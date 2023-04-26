@@ -1,7 +1,7 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 from mmcv.cnn import build_conv_layer, build_norm_layer
 
-from mmpose.registry import MODELS
+from ..builder import BACKBONES
 from .resnet import ResLayer
 from .seresnet import SEBottleneck as _SEBottleneck
 from .seresnet import SEResNet
@@ -32,8 +32,6 @@ class SEBottleneck(_SEBottleneck):
             Default: dict(type='BN')
         with_cp (bool): Use checkpoint or not. Using checkpoint will save some
             memory while slowing down the training speed.
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default: None
     """
 
     def __init__(self,
@@ -93,7 +91,7 @@ class SEBottleneck(_SEBottleneck):
         self.add_module(self.norm3_name, norm3)
 
 
-@MODELS.register_module()
+@BACKBONES.register_module()
 class SEResNeXt(SEResNet):
     """SEResNeXt backbone.
 
@@ -135,15 +133,6 @@ class SEResNeXt(SEResNet):
             memory while slowing down the training speed. Default: False.
         zero_init_residual (bool): Whether to use zero init for last norm layer
             in resblocks to let them behave as identity. Default: True.
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default:
-            ``[
-                dict(type='Kaiming', layer=['Conv2d']),
-                dict(
-                    type='Constant',
-                    val=1,
-                    layer=['_BatchNorm', 'GroupNorm'])
-            ]``
 
     Example:
         >>> from mmpose.models import SEResNeXt
