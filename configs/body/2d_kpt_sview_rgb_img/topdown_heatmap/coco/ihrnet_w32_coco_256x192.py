@@ -67,9 +67,9 @@ model = dict(
         num_deconv_layers=0,
         extra=dict(final_conv_kernel=1, ),
         loss_keypoint=dict(type='GaussianNLLLoss', use_target_weight=True)),
-    train_cfg=dict(num_samples=20),
+    train_cfg=dict(num_samples=4),
     test_cfg=dict(
-        num_samples=20,
+        num_samples=4,
         flip_test=True,
         post_process='default',
         shift_heatmap=True,
@@ -109,7 +109,7 @@ train_pipeline = [
         type='NormalizeTensor',
         mean=[0.485, 0.456, 0.406],
         std=[0.229, 0.224, 0.225]),
-    dict(type='TopDownGenerateTarget', sigma=2),
+    dict(type='TopDownGenerateTargetRegression'),
     dict(
         type='Collect',
         keys=['img', 'target', 'target_weight'],
@@ -141,10 +141,10 @@ test_pipeline = val_pipeline
 
 data_root = 'data/coco'
 data = dict(
-    samples_per_gpu=64,
+    samples_per_gpu=6,
     workers_per_gpu=2,
-    val_dataloader=dict(samples_per_gpu=32),
-    test_dataloader=dict(samples_per_gpu=32),
+    val_dataloader=dict(samples_per_gpu=6),
+    test_dataloader=dict(samples_per_gpu=6),
     train=dict(
         type='TopDownCocoDataset',
         ann_file=f'{data_root}/annotations/person_keypoints_train2017.json',

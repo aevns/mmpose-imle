@@ -55,8 +55,7 @@ class GaussianNLLLoss(nn.Module):
                 Weights across different joint types.
         """
         if self.use_target_weight:
-            loss = self.criterion(output * target_weight.unsqueeze(-1),
-                                  target * target_weight.unsqueeze(-1))
+            loss = self.criterion(output, torch.cat((target, target_weight[:,:,0].unsqueeze(-1)), dim=2))
         else:
             loss = self.criterion(output, target)
 

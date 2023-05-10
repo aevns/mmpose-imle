@@ -159,7 +159,7 @@ class TopdownHeatmapProbabilisticHead(TopdownHeatmapBaseHead):
         losses = dict()
 
         assert not isinstance(self.loss, nn.Sequential)
-        assert target.dim() == 4 and target_weight.dim() == 3
+        assert target.dim() == 3 and target_weight.dim() == 3
         losses['heatmap_loss'] = self.loss(output, target, target_weight)
 
         return losses
@@ -181,13 +181,13 @@ class TopdownHeatmapProbabilisticHead(TopdownHeatmapBaseHead):
         """
         
         accuracy = dict()
-
-        if self.target_type == 'GaussianHeatmap':
-            _, avg_acc, _ = pose_pck_accuracy(
-                output.detach().cpu().numpy(),
-                target.detach().cpu().numpy(),
-                target_weight.detach().cpu().numpy().squeeze(-1) > 0)
-            accuracy['acc_pose'] = float(avg_acc)
+        accuracy['acc_pose'] = float(0)
+        #if self.target_type == 'GaussianHeatmap':
+        #    _, avg_acc, _ = pose_pck_accuracy(
+        #        output.detach().cpu().numpy(),
+        #        target.detach().cpu().numpy(),
+        #        target_weight.detach().cpu().numpy().squeeze(-1) > 0)
+        #    accuracy['acc_pose'] = float(avg_acc)
 
         return accuracy
 
@@ -199,7 +199,6 @@ class TopdownHeatmapProbabilisticHead(TopdownHeatmapBaseHead):
 
         n, c, h, w = x.shape
         max_ = torch.max(torch.max(x, dim=-1)[0], dim=-1, keepdim=True)[0].unsqueeze(-1)
-        exp_max_ = torch.exp(max_ - h - w)
         z = torch.sum(torch.exp(x - max_), (2, 3)).view(n, c, 1, 1)
         h_norm = torch.exp(x - max_) / z
 
@@ -215,7 +214,7 @@ class TopdownHeatmapProbabilisticHead(TopdownHeatmapBaseHead):
         x_var = 1/12 + torch.sum(h_norm * xn * xn, dim=(2,3))
         y_var = 1/12 + torch.sum(h_norm * yn * yn, dim=(2,3))
         xy_covar = torch.sum(h_norm * xn * yn, dim=(2,3))
-        presence_prob = 1 - 1 / (exp_max_ * z + 1).view(n, c)
+        presence_prob = 1 - 1 / (torch.exp(max_) * z / (h*w) + 1).view(n, c)
 
         x = torch.stack((x_means, y_means, x_var, y_var, xy_covar, presence_prob), -1)
 

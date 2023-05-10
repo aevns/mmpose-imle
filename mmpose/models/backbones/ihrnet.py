@@ -605,14 +605,11 @@ class IHRNet(nn.Module):
                 x_list.append(y_list[i])
         y_list = self.stage3(x_list)
 
-        print(y_list[2].shape)
-        print(z.shape)
         tmp = torch.cat((y_list[2], z.view(-1,self.noise_channels,1,1).expand(y_list[2].shape[0], -1, y_list[2].shape[2], y_list[2].shape[3])), dim=1)
         tmp = self.conv3(tmp)
         tmp = self.norm3(tmp)
         tmp = self.relu(tmp)
         y_list[2] = tmp
-        print(y_list[2].shape)
 
         x_list = []
         for i in range(self.stage4_cfg['num_branches']):
