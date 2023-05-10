@@ -179,7 +179,7 @@ class TopdownHeatmapProbabilisticHead(TopdownHeatmapBaseHead):
             target_weight (torch.Tensor[N,K,1]):
                 Weights across different joint types.
         """
-
+        
         accuracy = dict()
 
         if self.target_type == 'GaussianHeatmap':
