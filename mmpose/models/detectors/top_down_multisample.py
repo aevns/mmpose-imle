@@ -148,20 +148,21 @@ class TopDownMultisample(BasePose):
         num_samples = self.train_cfg['num_samples']
         for s in range(num_samples):
             z = torch.randn((img.shape[0], self.backbone.noise_channels), device = img.device)
-            output = self.backbone(img, z)
-            if self.with_neck:
-                output = self.neck(output)
-            if self.with_keypoint:
-                output = self.keypoint_head(output)
 
-            losses = dict()
-            if self.with_keypoint:
-                keypoint_losses = self.keypoint_head.get_loss(
-                    output, target, target_weight)
-                losses.update(keypoint_losses)
-                #keypoint_accuracy = self.keypoint_head.get_accuracy(
-                #    output, target, target_weight)
-                #losses.update(keypoint_accuracy)
+            self.eval()
+            with torch.no_grad():
+                output = self.backbone(img, z)
+                if self.with_neck:
+                    output = self.neck(output)
+                if self.with_keypoint:
+                    output = self.keypoint_head(output)
+
+                losses = dict()
+                if self.with_keypoint:
+                    keypoint_losses = self.keypoint_head.get_loss(
+                        output, target, target_weight)
+                    losses.update(keypoint_losses)
+            self.train()
 
             if s == 0:
                 noise = z

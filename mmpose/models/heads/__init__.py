@@ -16,7 +16,7 @@ from .topdown_heatmap_multi_stage_head import (TopdownHeatmapMSMUHead,
 from .topdown_heatmap_simple_head import TopdownHeatmapSimpleHead
 from .vipnas_heatmap_simple_head import ViPNASHeatmapSimpleHead
 from .voxelpose_head import CuboidCenterHead, CuboidPoseHead
-from .topdown_heatmap_probabilistic_head import TopdownHeatmapProbabilisticHead
+from .topdown_gaussian_head import TopdownGaussianHead
 
 __all__ = [
     'TopdownHeatmapSimpleHead', 'TopdownHeatmapMultiStageHead',
@@ -24,5 +24,5 @@ __all__ = [
     'AEHigherResolutionHead', 'AESimpleHead', 'AEMultiStageHead', 'CIDHead',
     'DeepposeRegressionHead', 'TemporalRegressionHead', 'Interhand3DHead',
     'HMRMeshHead', 'DeconvHead', 'ViPNASHeatmapSimpleHead', 'CuboidCenterHead',
-    'CuboidPoseHead', 'MultiModalSSAHead', 'DEKRHead', 'TopdownHeatmapProbabilisticHead'
+    'CuboidPoseHead', 'MultiModalSSAHead', 'DEKRHead', 'TopdownGaussianHead'
 ]

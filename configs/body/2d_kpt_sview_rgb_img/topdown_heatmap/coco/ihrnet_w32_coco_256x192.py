@@ -67,9 +67,9 @@ model = dict(
         num_deconv_layers=0,
         extra=dict(final_conv_kernel=1, ),
         loss_keypoint=dict(type='GaussianNLLLoss', use_target_weight=True)),
-    train_cfg=dict(num_samples=4),
+    train_cfg=dict(num_samples=3),
     test_cfg=dict(
-        num_samples=4,
+        num_samples=3,
         flip_test=True,
         post_process='default',
         shift_heatmap=True,
@@ -141,10 +141,10 @@ test_pipeline = val_pipeline
 
 data_root = 'data/coco'
 data = dict(
-    samples_per_gpu=6,
+    samples_per_gpu=8,
     workers_per_gpu=2,
-    val_dataloader=dict(samples_per_gpu=6),
-    test_dataloader=dict(samples_per_gpu=6),
+    val_dataloader=dict(samples_per_gpu=8),
+    test_dataloader=dict(samples_per_gpu=8),
     train=dict(
         type='TopDownCocoDataset',
         ann_file=f'{data_root}/annotations/person_keypoints_train2017.json',
