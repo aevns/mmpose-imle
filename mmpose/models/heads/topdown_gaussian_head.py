@@ -5,13 +5,12 @@ import numpy as np
 from mmcv.cnn import (build_conv_layer, build_norm_layer, build_upsample_layer,
                       constant_init, normal_init)
 
-from mmpose.core.evaluation import keypoint_pck_accuracy
-from mmpose.core.post_processing import flip_back
+from mmpose.core.evaluation import (keypoint_pck_accuracy, keypoints_from_regression)
+from mmpose.core.post_processing import fliplr_regression
 from mmpose.models.builder import build_loss
 from mmpose.models.utils.ops import resize
 from ..builder import HEADS
 from .topdown_heatmap_base_head import TopdownHeatmapBaseHead
-from mmpose.core import fliplr_regression
 
 
 @HEADS.register_module()
@@ -162,7 +161,7 @@ class TopdownGaussianHead(TopdownHeatmapBaseHead):
 
         assert not isinstance(self.loss, nn.Sequential)
         assert target.dim() == 3 and target_weight.dim() == 3
-        losses['heatmap_loss'] = self.loss(output, target, target_weight)
+        losses['reg_loss'] = self.loss(output, target, target_weight)
 
         return losses
 
@@ -222,7 +221,7 @@ class TopdownGaussianHead(TopdownHeatmapBaseHead):
         xy_covar = torch.sum(h_norm * xn * yn, dim=(2,3))
         presence_prob = 1 - 1 / (torch.exp(max_) * z / (h*w) + 1).view(n, c)
 
-        x = torch.stack((x_means, y_means, x_var, y_var, xy_covar, presence_prob), -1)
+        x = torch.stack((x_means/w, y_means/h, x_var/(w*w), y_var/(h*h), xy_covar/(w*h), presence_prob), -1)
 
         return x
 
@@ -245,6 +244,66 @@ class TopdownGaussianHead(TopdownHeatmapBaseHead):
         else:
             output_regression = output.detach().cpu().numpy()
         return output_regression
+
+    def decode(self, img_metas, output, **kwargs):
+        """Decode the keypoints from output regression.
+
+        Args:
+            img_metas (list(dict)): Information about data augmentation
+                By default this includes:
+
+                - "image_file: path to the image file
+                - "center": center of the bbox
+                - "scale": scale of the bbox
+                - "rotation": rotation of the bbox
+                - "bbox_score": score of bbox
+            output (np.ndarray[N, K, >=2]): predicted regression vector.
+            kwargs: dict contains 'img_size'.
+                img_size (tuple(img_width, img_height)): input image size.
+        """
+        batch_size = len(img_metas)
+        sigma = output[..., 2:]
+        output = output[..., :2]  # get prediction joint locations
+
+        if 'bbox_id' in img_metas[0]:
+            bbox_ids = []
+        else:
+            bbox_ids = None
+
+        c = np.zeros((batch_size, 2), dtype=np.float32)
+        s = np.zeros((batch_size, 2), dtype=np.float32)
+        image_paths = []
+        score = np.ones(batch_size)
+        for i in range(batch_size):
+            c[i, :] = img_metas[i]['center']
+            s[i, :] = img_metas[i]['scale']
+            image_paths.append(img_metas[i]['image_file'])
+
+            if 'bbox_score' in img_metas[i]:
+                score[i] = np.array(img_metas[i]['bbox_score']).reshape(-1)
+            if bbox_ids is not None:
+                bbox_ids.append(img_metas[i]['bbox_id'])
+
+        preds, maxvals = keypoints_from_regression(output, c, s,
+                                                   kwargs['img_size'])
+
+        all_preds = np.zeros((batch_size, preds.shape[1], 3), dtype=np.float32)
+        all_boxes = np.zeros((batch_size, 6), dtype=np.float32)
+        all_preds[:, :, 0:2] = preds[:, :, 0:2]
+        all_preds[:, :, 2:3] = maxvals
+        all_boxes[:, 0:2] = c[:, 0:2]
+        all_boxes[:, 2:4] = s[:, 0:2]
+        all_boxes[:, 4] = np.prod(s * 200.0, axis=1)
+        all_boxes[:, 5] = score
+
+        result = {}
+
+        result['preds'] = all_preds
+        result['boxes'] = all_boxes
+        result['image_paths'] = image_paths
+        result['bbox_ids'] = bbox_ids
+
+        return result
 
     def _init_inputs(self, in_channels, in_index, input_transform):
         """Check and initialize input transforms.
