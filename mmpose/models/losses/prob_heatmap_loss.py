@@ -27,25 +27,39 @@ class ProbHeatmapLoss(nn.Module):
         batch_size = output.size(0)
         num_joints = output.size(1)
 
+        n, c, h, w = output.shape
+        with torch.no_grad():
+            max_ = torch.max(torch.max(output, dim=-1)[0], dim=-1, keepdim=True)[0].unsqueeze(-1)
+        z = torch.sum(torch.exp(output - max_), (2, 3)).view(n, c, 1, 1)
+        output = output - max_ - torch.log(z)
+
+        presence_prob = 1 - 1 / (torch.exp(max_) * z / (h*w) + 1).view(n, c)
+        mask = (target_weight[:,:,0] != 0)
+        label_loss = -torch.log(1 - presence_prob)
+        label_loss[mask] = -torch.log(presence_prob[mask])
+
+        norms_target = torch.sum(target, dim=(2,3), keepdim=True)
+        target = target / norms_target
+        target[~mask] = 1. / (w*h)
         heatmaps_pred = output.reshape(
             (batch_size, num_joints, -1)).split(1, 1)
         heatmaps_gt = target.reshape((batch_size, num_joints, -1)).split(1, 1)
-        
-        norms_gt = torch.sum(heatmaps_gt, dim=(2,3))
-        heatmaps_gt = heatmaps_gt / norms_gt
-        norms_pred = torch.sum(torch.exp(heatmaps_pred), dim=(2,3))
-        heatmaps_pred = heatmaps_pred - torch.log(norms_gt)
 
-        loss = 0.
+        loss = 0. 
 
         for idx in range(num_joints):
             heatmap_pred = heatmaps_pred[idx].squeeze(1)
             heatmap_gt = heatmaps_gt[idx].squeeze(1)
             if self.use_target_weight:
                 loss_joint = self.criterion(heatmap_pred, heatmap_gt)
+                loss_joint[~mask[:,idx]] = 0
                 loss_joint = loss_joint * target_weight[:, idx]
-                loss += loss_joint.mean()
+                loss += loss_joint.mean() + label_loss[:, idx]
+                if torch.isnan(loss_joint).any():
+                    print(":(")
             else:
-                loss += self.criterion(heatmap_pred, heatmap_gt)
+                loss_stage = self.criterion(heatmap_pred, heatmap_gt)
+                loss_stage[~mask[:,idx]] = 0
+                loss += loss_stage + label_loss[:, idx]
 
         return loss / num_joints * self.loss_weight

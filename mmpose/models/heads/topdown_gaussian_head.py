@@ -203,7 +203,8 @@ class TopdownGaussianHead(TopdownHeatmapBaseHead):
         x = self.final_layer(x)
 
         n, c, h, w = x.shape
-        max_ = torch.max(torch.max(x, dim=-1)[0], dim=-1, keepdim=True)[0].unsqueeze(-1)
+        with torch.no_grad():
+            max_ = torch.max(torch.max(x, dim=-1)[0], dim=-1, keepdim=True)[0].unsqueeze(-1)
         z = torch.sum(torch.exp(x - max_), (2, 3)).view(n, c, 1, 1)
         h_norm = torch.exp(x - max_) / z
 

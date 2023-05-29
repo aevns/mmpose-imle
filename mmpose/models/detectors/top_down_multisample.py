@@ -166,9 +166,9 @@ class TopDownMultisample(BasePose):
 
             if s == 0:
                 noise = z
-                min_losses = losses['heatmap_loss']
+                min_losses = losses['heatmap_loss'] if 'heatmap_loss' in losses else losses['reg_loss']
             else:
-                l = losses['heatmap_loss']
+                l = losses['heatmap_loss'] if 'heatmap_loss' in losses else losses['reg_loss']
                 mask = l < min_losses
                 min_losses[mask] = l[mask]
                 noise[mask] = z[mask]
