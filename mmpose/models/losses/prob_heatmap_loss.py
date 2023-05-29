@@ -38,6 +38,7 @@ class ProbHeatmapLoss(nn.Module):
         label_loss = -torch.log(1 - presence_prob)
         label_loss[mask] = -torch.log(presence_prob[mask])
 
+        target = target + 1E-12 # adding a small epsilon is essential because KLDivLoss (wrongly) fails at (0,0)
         norms_target = torch.sum(target, dim=(2,3), keepdim=True)
         target = target / norms_target
         target[~mask] = 1. / (w*h)
@@ -55,8 +56,6 @@ class ProbHeatmapLoss(nn.Module):
                 loss_joint[~mask[:,idx]] = 0
                 loss_joint = loss_joint * target_weight[:, idx]
                 loss += loss_joint.mean() + label_loss[:, idx]
-                if torch.isnan(loss_joint).any():
-                    print(":(")
             else:
                 loss_stage = self.criterion(heatmap_pred, heatmap_gt)
                 loss_stage[~mask[:,idx]] = 0
