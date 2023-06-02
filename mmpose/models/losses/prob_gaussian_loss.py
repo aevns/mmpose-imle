@@ -32,8 +32,8 @@ class ProbGaussianLoss(nn.Module):
         
         gt_pose = target[:,:,0:2]
         mask = (target[:,:,2] != 0)
-        label_loss = torch.log(1 - labeled)
-        label_loss[mask] = torch.log(labeled[mask])
+        label_loss = torch.log(1 - labeled * (1 - 1E-4))
+        label_loss[mask] = torch.log(labeled[mask] * (1 - 1E-4))
         label_loss = -torch.sum(label_loss, dim=-1)
 
         dif = torch.reshape(gt_pose - pose, (pose.shape[0], pose.shape[1], pose.shape[2], 1))
