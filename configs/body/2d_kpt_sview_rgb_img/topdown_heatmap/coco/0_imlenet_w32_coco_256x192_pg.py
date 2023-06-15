@@ -29,47 +29,22 @@ channel_cfg = dict(
 
 # model settings
 model = dict(
-    type='TopDownMultisample',
+    type='TopDown',
     pretrained=None,
     backbone=dict(
-        type='IHRNet',
+        type='IMLENet',
         in_channels=3,
-        extra=dict(
-            stage1=dict(
-                num_modules=1,
-                num_branches=1,
-                block='BOTTLENECK',
-                num_blocks=(4, ),
-                num_channels=(64, )),
-            stage2=dict(
-                num_modules=1,
-                num_branches=2,
-                block='BASIC',
-                num_blocks=(4, 4),
-                num_channels=(32, 64)),
-            stage3=dict(
-                num_modules=4,
-                num_branches=3,
-                block='BASIC',
-                num_blocks=(4, 4, 4),
-                num_channels=(32, 64, 128)),
-            stage4=dict(
-                num_modules=3,
-                num_branches=4,
-                block='BASIC',
-                num_blocks=(4, 4, 4, 4),
-                num_channels=(32, 64, 128, 256))),
+        extra=dict(loss_function=None, input_size=192),
     ),
     keypoint_head=dict(
-        type='TopdownHeatmapSimpleHead',
+        type='TopdownGaussianHead',
         in_channels=32,
         out_channels=channel_cfg['num_output_channels'],
         num_deconv_layers=0,
         extra=dict(final_conv_kernel=1, ),
-        loss_keypoint=dict(type='ProbHeatmapLoss', use_target_weight=True)),
-    train_cfg=dict(num_samples=3),
+        loss_keypoint=dict(type='ProbGaussianLoss', use_target_weight=True)),
+    train_cfg=dict(),
     test_cfg=dict(
-        num_samples=3,
         flip_test=True,
         post_process='default',
         shift_heatmap=True,
@@ -109,7 +84,7 @@ train_pipeline = [
         type='NormalizeTensor',
         mean=[0.485, 0.456, 0.406],
         std=[0.229, 0.224, 0.225]),
-    dict(type='TopDownGenerateTarget', sigma=2),
+    dict(type='TopDownGenerateTargetRegression'),
     dict(
         type='Collect',
         keys=['img', 'target', 'target_weight'],

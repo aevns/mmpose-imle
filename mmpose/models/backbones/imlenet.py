@@ -8,15 +8,15 @@ from ..builder import BACKBONES
 from .utils import load_checkpoint
 
 class IMLENetCenter(nn.Module):
-    def __init__(self, input_shape, noise_length):
+    def __init__(self, input_shape, noise_channels):
         super(IMLENetCenter, self).__init__()
         self.input_shape = input_shape
-        self.noise_length = noise_length
+        self.noise_channels = noise_channels
         self.in_channels = input_shape[0]
         self.out_channels = input_shape[0]
 
         self.relu = nn.ReLU(inplace=True)
-        self.vectorize = nn.Linear(torch.prod(self.input_shape).item(), 128 - noise_length)
+        self.vectorize = nn.Linear(torch.prod(self.input_shape).item(), 128 - noise_channels)
         self.devectorize =  nn.Linear(128, torch.prod(self.input_shape).item())
     
     def _initialize(self):
@@ -70,7 +70,7 @@ class IMLENet(nn.Module):
     def __init__(self,
                  loss_function,
                  input_size,
-                 noise_length = 8,
+                 noise_channels = 8,
                  n_stages = None,
                  frozen_stages = -1,
                  with_cp = False,
@@ -81,7 +81,7 @@ class IMLENet(nn.Module):
 
         self.loss = loss_function
         self.input_size = input_size
-        self.noise_length = noise_length
+        self.noise_channels = noise_channels
         if n_stages == None:
             self.n_stages = torch.floor(torch.log2(torch.min(input_size))).to(torch.int32).item() - 1
         else:
@@ -92,7 +92,7 @@ class IMLENet(nn.Module):
             torch.div(self.input_size[0],(2**self.n_stages), rounding_mode='floor'),
             torch.div(self.input_size[1],(2**self.n_stages), rounding_mode='floor')
             ]).to(torch.int32)
-        self.net = IMLENetCenter(center_shape, noise_length)
+        self.net = IMLENetCenter(center_shape, noise_channels)
 
         for i in range(1, self.n_stages + 1):
             channels = floor(IMLENet.max_channels**(1 - i/self.n_stages)*IMLENet.min_channels**(i/self.n_stages))
@@ -113,17 +113,17 @@ class IMLENet(nn.Module):
         return {'pose': IMLENet.gaussian_fit(out), 'heatmap': out}
     
     def get_sample(self, x):
-        z = torch.randn((x['image'].shape[0], self.noise_length), device = x['image'].device)
+        z = torch.randn((x['image'].shape[0], self.noise_channels), device = x['image'].device)
         return self.forward(x, z)
 
     def unconditioned_loss(self, x):
-        z = torch.zeros((x['image'].shape[0], self.noise_length), device = x['image'].device)
+        z = torch.zeros((x['image'].shape[0], self.noise_channels), device = x['image'].device)
         return self.loss(self.forward(x, z), x)
 
     def min_sample_loss(self, x, n):
         with torch.no_grad():
             for s in range(n):
-                z = torch.randn((x['image'].shape[0], self.noise_length), device = x['image'].device)
+                z = torch.randn((x['image'].shape[0], self.noise_channels), device = x['image'].device)
                 pred = self.forward(x, z)
                 if s == 0:
                     noise = z
@@ -138,7 +138,7 @@ class IMLENet(nn.Module):
     def mixed_sample_backward(self, x, n):
         net_grad = {}
         for i in range(n):
-            z = torch.randn((x['image'].shape[0], self.noise_length), device = x['image'].device)
+            z = torch.randn((x['image'].shape[0], self.noise_channels), device = x['image'].device)
             pred = self.forward(x, z)
             nll = torch.mean(self.loss(pred, x))
             self.zero_grad()
@@ -164,7 +164,7 @@ class IMLENet(nn.Module):
     def mixed_sample_loss(self, x, n):
         with torch.no_grad():  
             for i in range(n):
-                z = torch.randn((x['image'].shape[0], self.noise_length), device = x['image'].device)
+                z = torch.randn((x['image'].shape[0], self.noise_channels), device = x['image'].device)
                 pred = self.forward(x, z)
                 nll = torch.mean(self.loss(pred, x))
                 if i==0:
@@ -202,5 +202,5 @@ class IMLENetLarge(IMLENet):
     min_channels = 32
     max_channels = 256
 
-    def __init__(self, loss_function, input_size, noise_length = 32, n_stages = None):
-        super(IMLENetLarge, self).__init__(loss_function, input_size, noise_length, n_stages)
+    def __init__(self, loss_function, input_size, noise_channels = 32, n_stages = None):
+        super(IMLENetLarge, self).__init__(loss_function, input_size, noise_channels, n_stages)

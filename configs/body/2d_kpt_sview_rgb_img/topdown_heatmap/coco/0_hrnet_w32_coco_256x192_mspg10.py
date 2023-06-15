@@ -61,15 +61,15 @@ model = dict(
                 num_channels=(32, 64, 128, 256))),
     ),
     keypoint_head=dict(
-        type='TopdownHeatmapSimpleHead',
+        type='TopdownGaussianHead',
         in_channels=32,
         out_channels=channel_cfg['num_output_channels'],
         num_deconv_layers=0,
         extra=dict(final_conv_kernel=1, ),
-        loss_keypoint=dict(type='ProbHeatmapLoss', use_target_weight=True)),
-    train_cfg=dict(num_samples=3),
+        loss_keypoint=dict(type='ProbGaussianLoss', use_target_weight=True)),
+    train_cfg=dict(num_samples=10),
     test_cfg=dict(
-        num_samples=3,
+        num_samples=10,
         flip_test=True,
         post_process='default',
         shift_heatmap=True,
@@ -109,7 +109,7 @@ train_pipeline = [
         type='NormalizeTensor',
         mean=[0.485, 0.456, 0.406],
         std=[0.229, 0.224, 0.225]),
-    dict(type='TopDownGenerateTarget', sigma=2),
+    dict(type='TopDownGenerateTargetRegression'),
     dict(
         type='Collect',
         keys=['img', 'target', 'target_weight'],
