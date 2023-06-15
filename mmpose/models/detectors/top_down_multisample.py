@@ -199,7 +199,32 @@ class TopDownMultisample(BasePose):
 
         result = {}
 
-        noise = torch.randn((img.shape[0], self.backbone.noise_channels), device = img.device)
+        num_samples = self.train_cfg['num_samples']
+        for s in range(num_samples):
+            z = torch.randn((img.shape[0], self.backbone.noise_channels), device = img.device)
+
+            output = self.backbone(img, z)
+            if self.with_neck:
+                output = self.neck(output)
+            if self.with_keypoint:
+                output = self.keypoint_head(output)
+
+            entropies = dict()
+            if self.with_keypoint:
+                keypoint_entropies = self.keypoint_head.get_entropy(output)
+                entropies.update(keypoint_entropies)
+
+            if s == 0:
+                noise = z
+                min_entropies = entropies['heatmap_loss'] if 'heatmap_entropy' in entropies else entropies['reg_entropy']
+            else:
+                l = entropies['heatmap_loss'] if 'heatmap_entropy' in entropies else entropies['reg_entropy']
+                mask = l < min_entropies
+                min_entropies[mask] = l[mask]
+                noise[mask] = z[mask]
+        
+        output = self.backbone(img, noise)
+
         features = self.backbone(img, noise)
         if self.with_neck:
             features = self.neck(features)

@@ -38,7 +38,7 @@ class ProbHeatmapLoss(nn.Module):
         label_loss = -torch.log(1 - presence_prob)
         label_loss[mask] = -torch.log(presence_prob[mask])
 
-        target = target + 1E-12 # adding a small epsilon is essential because KLDivLoss (wrongly) fails at (0,0)
+        target = target + 1E-2 / (w*h) # adding a small epsilon is essential because KLDivLoss (wrongly) fails at (0,0)
         norms_target = torch.sum(target, dim=(2,3), keepdim=True)
         target = target / norms_target
         target[~mask] = 1. / (w*h)

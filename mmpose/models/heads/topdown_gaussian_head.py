@@ -141,6 +141,17 @@ class TopdownGaussianHead(TopdownHeatmapBaseHead):
             else:
                 self.final_layer = layers[0]
 
+    def get_entropy(self, output):
+        
+        cov_idx = torch.tensor([[2,4],[4,3]])
+        cov_mat = output[:,:,cov_idx]
+        if output.shape[2] == 6:
+            label_preds = output[:,:,5]
+        entropy = label_preds * (torch.log(torch.det(cov_mat))/2 + 2.8378770664093455 - torch.log(label_preds)) + (1 - label_preds) * (- torch.log(1 - label_preds))
+        out = dict()
+        out['reg_entropy'] = torch.sum(entropy, dim=(-1))
+        return out
+
     def get_loss(self, output, target, target_weight):
         """Calculate top-down keypoint loss.
 
