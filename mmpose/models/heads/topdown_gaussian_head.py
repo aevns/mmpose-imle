@@ -298,7 +298,7 @@ class TopdownGaussianHead(TopdownHeatmapBaseHead):
 
         preds, maxvals = keypoints_from_regression(output, c, s,
                                                    kwargs['img_size'])
-        maxvals = output[:, :, 5]
+        maxvals = sigma[:, :, 3]
         all_preds = np.zeros((batch_size, preds.shape[1], 3), dtype=np.float32)
         all_boxes = np.zeros((batch_size, 6), dtype=np.float32)
         all_preds[:, :, 0:2] = preds[:, :, 0:2]
