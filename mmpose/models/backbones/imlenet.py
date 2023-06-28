@@ -80,10 +80,11 @@ class IMLENet(nn.Module):
         super(IMLENet, self).__init__()
 
         self.loss = loss_function
-        self.input_size = input_size
+        self.input_size = torch.tensor(input_size)
         self.noise_channels = noise_channels
+        self.norm_eval = norm_eval
         if n_stages == None:
-            self.n_stages = torch.floor(torch.log2(torch.min(input_size))).to(torch.int32).item() - 1
+            self.n_stages = torch.floor(torch.log2(torch.min(self.input_size))).to(torch.int32).item() - 1
         else:
             self.n_stages = n_stages
 
@@ -99,19 +100,30 @@ class IMLENet(nn.Module):
             self.net = IMLENetStage(self.net, channels, channels)
         
         self.initial = nn.Conv2d(3, IMLENet.min_channels, kernel_size=1, stride=1, padding=0, bias=True)
-        self.final = nn.Conv2d(IMLENet.min_channels, 17, kernel_size=1, stride=1, padding=0, bias=True)
+        self.final = nn.Conv2d(IMLENet.min_channels, 32, kernel_size=1, stride=1, padding=0, bias=True)
 
-    def _initialize(self):
-        for name, m in self.named_modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, str='relu')
+    def init_weights(self, pretrained=None):
+        if isinstance(pretrained, str):
+            logger = get_root_logger()
+            load_checkpoint(self, pretrained, strict=False, logger=logger)
+        elif pretrained is None:
+            for name, m in self.named_modules():
+                if isinstance(m, nn.Conv2d):
+                    nn.init.kaiming_normal_(m.weight, str='relu')
 
     def forward(self, x, z):
         out = self.initial(x['image'])
         out = self.net(out, z)
         out = self.final(out)
-        return {'pose': IMLENet.gaussian_fit(out), 'heatmap': out}
+        return out
     
+    def train(self, mode=True):
+        if mode and self.norm_eval:
+            for m in self.modules():
+                if isinstance(m, nn.BatchNorm2d):
+                    m.eval()
+
+
     def get_sample(self, x):
         z = torch.randn((x['image'].shape[0], self.noise_channels), device = x['image'].device)
         return self.forward(x, z)
@@ -196,11 +208,3 @@ class IMLENet(nn.Module):
         presence_prob = 1 - 1 / (exp_max_ * z + 1).view(n, c)
 
         return torch.stack((x_means, y_means, x_var, y_var, xy_covar, presence_prob), -1)
-
-class IMLENetLarge(IMLENet):
-    name = "IMLENetLarge"
-    min_channels = 32
-    max_channels = 256
-
-    def __init__(self, loss_function, input_size, noise_channels = 32, n_stages = None):
-        super(IMLENetLarge, self).__init__(loss_function, input_size, noise_channels, n_stages)
