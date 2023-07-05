@@ -15,8 +15,8 @@ class ProbHeatmapLoss(nn.Module):
                 return p * (torch.log(p + eps) - q)
         elif reduction == 'batchmean':
             def loss(q,p):
-                batchsize = q.size(0)
-                return torch.sum(p * (torch.log(p + eps) - q))/batchsize
+                #batchsize = q.size(0)
+                return torch.sum(p * (torch.log(p + eps) - q))#/batchsize
             
         return loss
 
@@ -27,7 +27,7 @@ class ProbHeatmapLoss(nn.Module):
         self.criterion = ProbHeatmapLoss.KLDivLoss(reduction=reduction)
         self.loss_weight = loss_weight
 
-    def forward(self, output, target, target_weight):
+    def forward(self, output, target, target_weight, use_label_loss = False):
         """Forward function."""
         batch_size = output.size(0)
         num_joints = output.size(1)
@@ -55,6 +55,8 @@ class ProbHeatmapLoss(nn.Module):
 
         loss = 0.
 
+        if ~use_label_loss:
+            label_loss *= 0
         for idx in range(num_joints):
             heatmap_pred = heatmaps_pred[idx].squeeze(1)
             heatmap_gt = heatmaps_gt[idx].squeeze(1)

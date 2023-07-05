@@ -13,7 +13,7 @@ class ProbGaussianLoss(nn.Module):
         self.use_target_weight = use_target_weight
         self.loss_weight = loss_weight
     
-    def criterion(self, pred, target):
+    def criterion(self, pred, target, use_label_loss = True):
         """Criterion of Gaussian NLL Loss.
 
         Note:
@@ -39,9 +39,12 @@ class ProbGaussianLoss(nn.Module):
         dif = torch.reshape(gt_pose - pose, (pose.shape[0], pose.shape[1], pose.shape[2], 1))
         q = torch.matmul(torch.transpose(dif,-1,-2), torch.matmul(torch.inverse(cov_mat), dif))
         q = q.view(q.shape[0], q.shape[1])
-        return torch.sum(mask * (torch.log(torch.det(cov_mat)) + q)/2 + 1.8378770664093455, dim=(-1)) + label_loss
+        if ~use_label_loss:
+            label_loss *= 0
+        pose_loss = torch.sum(mask * (torch.log(torch.det(cov_mat)) + q)/2 + 1.8378770664093455, dim=(-1))
+        return pose_loss + label_loss
     
-    def forward(self, output, target, target_weight):
+    def forward(self, output, target, target_weight, use_label_loss = False):
         """Forward function.
 
         Note:
@@ -55,8 +58,8 @@ class ProbGaussianLoss(nn.Module):
                 Weights across different joint types.
         """
         if self.use_target_weight:
-            loss = self.criterion(output, torch.cat((target, target_weight[:,:,0].unsqueeze(-1)), dim=2))
+            loss = self.criterion(output, torch.cat((target, target_weight[:,:,0].unsqueeze(-1)), dim=2), use_label_loss)
         else:
-            loss = self.criterion(output, target)
+            loss = self.criterion(output, target, use_label_loss)
 
         return loss * self.loss_weight

@@ -271,10 +271,6 @@ class TopDownCocoDataset(Kpt2dSviewRgbImgTopDownDataset):
             boxes = result['boxes']
             image_paths = result['image_paths']
             bbox_ids = result['bbox_ids']
-            if 'stats' in result:
-                stats = result['stats']
-            else:
-                stats = result['output_heatmap']
 
             batch_size = len(image_paths)
             for i in range(batch_size):
@@ -286,8 +282,7 @@ class TopDownCocoDataset(Kpt2dSviewRgbImgTopDownDataset):
                     'area': boxes[i][4],
                     'score': boxes[i][5],
                     'image_id': image_id,
-                    'bbox_id': bbox_ids[i],
-                    'stats': stats[i]
+                    'bbox_id': bbox_ids[i]
                 })
         kpts = self._sort_and_unique_bboxes(kpts)
 
