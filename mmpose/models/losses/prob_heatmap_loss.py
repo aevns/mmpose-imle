@@ -7,13 +7,7 @@ from ..builder import LOSSES
 
 @LOSSES.register_module()
 class ProbHeatmapLoss(nn.Module):
-    """MSE loss for heatmaps.
-
-    Args:
-        use_target_weight (bool): Option to use weighted MSE loss.
-            Different joint types may have different target weights.
-        loss_weight (float): Weight of the loss. Default: 1.0.
-    """
+    
     @staticmethod
     def KLDivLoss(reduction = 'none', eps = 1E-6):
         if reduction == 'none':

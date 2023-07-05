@@ -252,7 +252,7 @@ class TopDownCocoDataset(Kpt2dSviewRgbImgTopDownDataset):
             dict: Evaluation results for evaluation metric.
         """
         metrics = metric if isinstance(metric, list) else [metric]
-        allowed_metrics = ['mAP']
+        allowed_metrics = ['mAP', 'NLL']
         for metric in metrics:
             if metric not in allowed_metrics:
                 raise KeyError(f'metric {metric} is not supported')
@@ -271,6 +271,10 @@ class TopDownCocoDataset(Kpt2dSviewRgbImgTopDownDataset):
             boxes = result['boxes']
             image_paths = result['image_paths']
             bbox_ids = result['bbox_ids']
+            if 'stats' in result:
+                stats = result['stats']
+            else:
+                stats = result['output_heatmap']
 
             batch_size = len(image_paths)
             for i in range(batch_size):
@@ -282,7 +286,8 @@ class TopDownCocoDataset(Kpt2dSviewRgbImgTopDownDataset):
                     'area': boxes[i][4],
                     'score': boxes[i][5],
                     'image_id': image_id,
-                    'bbox_id': bbox_ids[i]
+                    'bbox_id': bbox_ids[i],
+                    'stats': stats[i]
                 })
         kpts = self._sort_and_unique_bboxes(kpts)
 

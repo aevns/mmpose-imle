@@ -274,7 +274,7 @@ class TopdownGaussianHead(TopdownHeatmapBaseHead):
                 img_size (tuple(img_width, img_height)): input image size.
         """
         batch_size = len(img_metas)
-        sigma = output[..., 2:]
+        stats = output
         output = output[..., :2]  # get prediction joint locations
 
         if 'bbox_id' in img_metas[0]:
@@ -301,11 +301,25 @@ class TopdownGaussianHead(TopdownHeatmapBaseHead):
         all_preds = np.zeros((batch_size, preds.shape[1], 3), dtype=np.float32)
         all_boxes = np.zeros((batch_size, 6), dtype=np.float32)
         all_preds[:, :, 0:2] = preds[:, :, 0:2]
-        all_preds[:, :, 2] = sigma[:, :, 3]
+        all_preds[:, :, 2] = stats[:, :, 5]
         all_boxes[:, 0:2] = c[:, 0:2]
         all_boxes[:, 2:4] = s[:, 0:2]
         all_boxes[:, 4] = np.prod(s * 200.0, axis=1)
         all_boxes[:, 5] = score
+
+        # done here because I don't want to break top_down_eval.py or post_transforms.py by including it there
+        # could be heavily simplified, but leaving it 1:1 with how transforms are applied for now
+        stats[:, :, 0:2] = preds[:, :, 0:2]
+        stats[:, :, 2] = stats[:, :, 2] * kwargs['img_size'][0] * kwargs['img_size'][0]
+        stats[:, :, 3] = stats[:, :, 3] * kwargs['img_size'][1] * kwargs['img_size'][1]
+        stats[:, :, 4] = stats[:, :, 4] * kwargs['img_size'][0] * kwargs['img_size'][1]
+        for i in range(N):
+            scale = s[i] * 200.0
+            scale_x = scale[0] / kwargs['img_size'][0]
+            scale_y = scale[1] / kwargs['img_size'][1]
+            stats[:, :, 2] = stats[:, :, 2] * scale_x * scale_x
+            stats[:, :, 3] = stats[:, :, 3] * scale_y * scale_y
+            stats[:, :, 4] = stats[:, :, 4] * scale_x * scale_y
 
         result = {}
 
@@ -313,6 +327,7 @@ class TopdownGaussianHead(TopdownHeatmapBaseHead):
         result['boxes'] = all_boxes
         result['image_paths'] = image_paths
         result['bbox_ids'] = bbox_ids
+        result['stats'] = stats.unsqueeze(0)
 
         return result
 
