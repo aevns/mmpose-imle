@@ -132,7 +132,8 @@ val_pipeline = [
         type='Collect',
         keys=['img', 'target', 'target_weight'],
         meta_keys=[
-            'image_file', 'joints_3d', 'joints_3d_visible', 'center', 'scale', 'rotation', 'bbox_score', 'flip_pairs'
+            'image_file', 'joints_3d', 'joints_3d_visible', 'center', 'scale',
+            'rotation', 'bbox_score', 'flip_pairs'
         ]),
 ]
 

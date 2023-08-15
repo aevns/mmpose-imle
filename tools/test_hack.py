@@ -193,24 +193,24 @@ def main():
         net_nll = 0
         count = 0
         for data in data_loader:
-            data['return_loss'] = True
+            data['return_loss'] = False
             with torch.no_grad():
                 result = model.forward(**data)
             # use the first key as main key to calculate the batch size
             batch_size = len(next(iter(data.values())))
+            print(data['target'][0])
             for _ in range(batch_size):
                 prog_bar.update()
-            if 'reg_loss' in result:
-                net_nll += result['reg_loss']
-            else:
-                net_nll += result['heatmap_loss']
+            #if 'reg_loss' in result:
+            #    net_nll += torch.sum(result['reg_loss'])
+            #else:
+            #    net_nll += torch.sum(result['heatmap_loss'])
             count += batch_size
-        mean_nll = net_nll / count
+        #mean_nll = net_nll / count
     else:
         None
-    print("mean NLL:")
-    print(mean_nll)
-
+    print("\nmean NLL:")
+    #print(mean_nll)
 
 if __name__ == '__main__':
     main()

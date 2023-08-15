@@ -128,12 +128,12 @@ val_pipeline = [
         type='NormalizeTensor',
         mean=[0.485, 0.456, 0.406],
         std=[0.229, 0.224, 0.225]),
+    dict(type='TopDownGenerateTargetRegression'),
     dict(
         type='Collect',
-        keys=['img'],
+        keys=['img', 'target', 'target_weight'],
         meta_keys=[
-            'image_file', 'center', 'scale', 'rotation', 'bbox_score',
-            'flip_pairs'
+            'image_file', 'joints_3d', 'joints_3d_visible', 'center', 'scale', 'rotation', 'bbox_score', 'flip_pairs'
         ]),
 ]
 
