@@ -16,6 +16,10 @@ from mmpose.datasets import build_dataloader, build_dataset
 from mmpose.models import build_posenet
 from mmpose.utils import setup_multi_processes
 
+##############
+import matplotlib.pyplot as plt
+##############
+
 try:
     from mmcv.runner import wrap_fp16_model
 except ImportError:
@@ -198,7 +202,6 @@ def main():
                 result = model.forward(**data)
             # use the first key as main key to calculate the batch size
             batch_size = len(next(iter(data.values())))
-            print(data['target'][0])
             for _ in range(batch_size):
                 prog_bar.update()
             #if 'reg_loss' in result:
@@ -206,6 +209,13 @@ def main():
             #else:
             #    net_nll += torch.sum(result['heatmap_loss'])
             count += batch_size
+
+            n = 8
+            print(data['target'][n])
+            plt.imshow(data['img'][n].permute(1,2,0).numpy() / 4 + 0.5, extent=[0,1,1,0])
+            plt.scatter(data['target'][n,:,0].flatten().numpy(), data['target'][n,:,1].flatten().numpy())
+            plt.show()
+            print('plotted')
         #mean_nll = net_nll / count
     else:
         None
