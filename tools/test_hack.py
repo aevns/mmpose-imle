@@ -201,6 +201,7 @@ def main():
         prog_bar = mmcv.ProgressBar(len(dataset))
         net_nll = 0
         count = 0
+        nll_records = []
         for data in data_loader:
             data['return_loss'] = False
             with torch.no_grad():
@@ -211,8 +212,10 @@ def main():
                 prog_bar.update()
             #if 'reg_loss' in result:
             #    net_nll += torch.sum(result['reg_loss'])
+            #    nll_records.append(torch.sum(result['reg_loss']) / batch_size)
             #else:
             #    net_nll += torch.sum(result['heatmap_loss'])
+            #    nll_records.append(torch.sum(result['reg_loss'].item()) / batch_size)
             count += batch_size
 
             n = 2
@@ -221,6 +224,10 @@ def main():
             plt.scatter(data['target'][n,:,0].flatten().numpy(), data['target'][n,:,1].flatten().numpy())
             plt.show()
             print('plotted')
+            #print(torch.sum(result['heatmap_loss']))
+
+        #plt.hist(nll_records)
+        plt.show()
         #mean_nll = net_nll / count
     else:
         None
