@@ -136,7 +136,7 @@ def main():
     cfg.data.test.test_mode = True
 
     # ESSENTIAL CHANGE
-    cfg.data_cfg.use_gt_box = True
+    cfg.data_cfg.use_gt_bbox = True
 
     # work_dir is determined in this priority: CLI > segment in file > filename
     if args.work_dir is not None:
