@@ -135,6 +135,9 @@ def main():
     cfg.model.pretrained = None
     cfg.data.test.test_mode = True
 
+    # ESSENTIAL CHANGE
+    cfg.data_cfg.use_gt_box = True
+
     # work_dir is determined in this priority: CLI > segment in file > filename
     if args.work_dir is not None:
         # update configs according to CLI args if args.work_dir is not None
@@ -210,7 +213,7 @@ def main():
             #    net_nll += torch.sum(result['heatmap_loss'])
             count += batch_size
 
-            n = 8
+            n = 2
             print(data['target'][n])
             plt.imshow(data['img'][n].permute(1,2,0).numpy() / 4 + 0.5, extent=[0,1,1,0])
             plt.scatter(data['target'][n,:,0].flatten().numpy(), data['target'][n,:,1].flatten().numpy())
