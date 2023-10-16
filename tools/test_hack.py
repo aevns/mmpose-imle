@@ -123,6 +123,11 @@ def main():
 
     cfg = Config.fromfile(args.config)
 
+    # ESSENTIAL CHANGE
+    cfg.data_cfg.use_gt_bbox = True
+    cfg.data.val.data_cfg.use_gt_bbox = True
+    cfg.data.test.data_cfg.use_gt_bbox = True
+
     if args.cfg_options is not None:
         cfg.merge_from_dict(args.cfg_options)
 
@@ -134,9 +139,6 @@ def main():
         torch.backends.cudnn.benchmark = True
     cfg.model.pretrained = None
     cfg.data.test.test_mode = True
-
-    # ESSENTIAL CHANGE
-    cfg.data_cfg.use_gt_bbox = True
 
     # work_dir is determined in this priority: CLI > segment in file > filename
     if args.work_dir is not None:
