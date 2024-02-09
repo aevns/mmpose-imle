@@ -201,6 +201,7 @@ def main():
         prog_bar = mmcv.ProgressBar(len(dataset))
         net_nll = 0
         count = 0
+        nll_records = []
         for data in data_loader:
             #data['return_loss'] = True
             data['return_loss'] = False
