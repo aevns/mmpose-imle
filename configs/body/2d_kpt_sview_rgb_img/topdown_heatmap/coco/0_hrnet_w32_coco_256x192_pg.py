@@ -130,10 +130,10 @@ val_pipeline = [
     dict(type='TopDownGenerateTargetRegression'),
     dict(
         type='Collect',
-        keys=['img', 'target', 'target_weight'],
+        keys=['img'],
         meta_keys=[
-            'image_file', 'joints_3d', 'joints_3d_visible', 'ann_info', 'center', 'scale',
-            'rotation', 'bbox_score', 'flip_pairs'
+            'image_file', 'center', 'scale', 'rotation', 'bbox_score',
+            'flip_pairs'
         ]),
 ]
 

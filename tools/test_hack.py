@@ -202,6 +202,7 @@ def main():
         net_nll = 0
         count = 0
         for data in data_loader:
+            #data['return_loss'] = True
             data['return_loss'] = False
             with torch.no_grad():
                 result = model.forward(**data)
@@ -209,23 +210,30 @@ def main():
             batch_size = len(next(iter(data.values())))
             for _ in range(batch_size):
                 prog_bar.update()
-            #if 'reg_loss' in result:
-            #    net_nll += torch.sum(result['reg_loss'])
-            #else:
-            #    net_nll += torch.sum(result['heatmap_loss'])
-            count += batch_size
-
-            n = 2
-            print(data['target'][n])
-            plt.imshow(data['img'][n].permute(1,2,0).numpy() / 4 + 0.5, extent=[0,1,1,0])
-            plt.scatter(data['target'][n,:,0].flatten().numpy(), data['target'][n,:,1].flatten().numpy())
-            plt.show()
-            print('plotted')
-        #mean_nll = net_nll / count
+            
+            if data['return_loss']:
+                if 'reg_loss' in result:
+                    net_nll += torch.sum(result['reg_loss'])
+                    count += batch_size
+                else:
+                    if torch.any(torch.isnan(result['heatmap_loss'])):
+                        print('oof')
+                    else:
+                        net_nll += torch.sum(result['heatmap_loss'])
+                        count += batch_size
+            else:
+                n = 2
+                plt.imshow(data['img'][n].permute(1,2,0).numpy() / 4 + 0.5)
+                #plt.imshow(data['target'][n,0].numpy())
+                plt.scatter(data['target'][n,:,0].flatten().numpy(), data['target'][n,:,1].flatten().numpy())
+                plt.scatter(result['preds'][n,:,0], result['preds'][n,:,1])
+                plt.show()
+                print('plotted')
+        mean_nll = net_nll / count
     else:
         None
     print("\nmean NLL:")
-    #print(mean_nll)
+    print(mean_nll)
 
 if __name__ == '__main__':
     main()
