@@ -226,8 +226,14 @@ def main():
                 n = 2
                 plt.imshow(data['img'][n].permute(1,2,0).numpy() / 4 + 0.5)
                 #plt.imshow(data['target'][n,0].numpy())
-                plt.scatter(data['target'][n,:,0].flatten().numpy(), data['target'][n,:,1].flatten().numpy())
-                plt.scatter(result['preds'][n,:,0], result['preds'][n,:,1])
+                plt.scatter(
+                    data['target'][n,:,0].flatten().numpy(),
+                    data['target'][n,:,1].flatten().numpy(),
+                    c="green")
+                plt.scatter(
+                    (result['preds'][n,:,0] - result['boxes'][n,0]) / result['boxes'][n,2] + 96,
+                    (result['preds'][n,:,1] - result['boxes'][n,1]) / result['boxes'][n,2] + 128,
+                    c="cyan") # correct scaling for heatmap method eval
                 plt.show()
                 print('plotted')
         mean_nll = net_nll / count
