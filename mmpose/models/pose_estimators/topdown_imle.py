@@ -103,32 +103,33 @@ class TopdownIMLEPoseEstimator(BasePoseEstimator):
         Returns:
             Dict[str, torch.Tensor]: A ``dict`` of tensor for logging.
         """
-        assert(isinstance(data, torch.Tensor))
-        data = self.data_preprocessor(data, True)
+        assert( hasattr(self.backbone, 'noise_channels'))
+        num_samples = self.train_cfg.get('num_samples', 1)
         if data.dim() == 4:
             count = data.shape[0]
         else:
             count = 1
-        z = torch.randn((count, self.backbone.noise_channels), device = data.device)
-        self.eval()
+        is_training = self.training
+        if is_training: self.eval()
         with torch.no_grad():
-            output = self.backbone(Tuple(data, z))
-            if self.with_neck:
-                output = self.neck(output)
-            if self.with_keypoint:
-                output = self.keypoint_head(output)
-
-            losses = dict()
-            if self.with_keypoint:
-                keypoint_losses = self.keypoint_head.get_loss(
-                    output, target, target_weight)
-                losses.update(keypoint_losses)
-        self.train()
+            data_test = self.data_preprocessor(data, True)
+            for sample in range(num_samples):
+                z = torch.randn((count, self.backbone.noise_channels), device = data.device)
+                losses = self._run_forward(Tuple(data_test, z), mode='loss')
+                
+                if sample == 0:
+                    noise = z
+                    min_losses = losses
+                else:
+                    mask = losses < min_losses
+                    min_losses[mask] = losses[mask]
+                    noise[mask] = z[mask]
+        if is_training: self.train()
 
         # Enable automatic mixed precision training context.
         with optim_wrapper.optim_context(self):
             data = self.data_preprocessor(data, True)
-            losses = self._run_forward(data, mode='loss')  # type: ignore
+            losses = self._run_forward(Tuple(data, noise), mode='loss')  # type: ignore
         parsed_losses, log_vars = self.parse_losses(losses)  # type: ignore
         optim_wrapper.update_params(parsed_losses)
         return log_vars
