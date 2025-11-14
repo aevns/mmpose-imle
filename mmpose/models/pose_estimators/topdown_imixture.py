@@ -2,7 +2,7 @@
 from itertools import zip_longest
 from typing import Dict, Optional, Tuple, Union
 
-from torch import Tensor
+import torch
 
 from mmengine.optim import OptimWrapper
 from mmpose.registry import MODELS
@@ -12,7 +12,7 @@ from .base import BasePoseEstimator
 
 
 @MODELS.register_module()
-class TopdownIMixtureEPoseEstimator(BasePoseEstimator):
+class TopdownIMixturePoseEstimator(BasePoseEstimator):
     """Base class for top-down pose estimators.
 
     Args:
@@ -54,30 +54,10 @@ class TopdownIMixtureEPoseEstimator(BasePoseEstimator):
             data_preprocessor=data_preprocessor,
             init_cfg=init_cfg,
             metainfo=metainfo)
-
-    def loss(self, inputs: Tensor, data_samples: SampleList) -> dict:
-        """Calculate losses from a batch of inputs and data samples.
-
-        Args:
-            inputs (Tensor): Inputs with shape (N, C, H, W).
-            data_samples (List[:obj:`PoseDataSample`]): The batch
-                data samples.
-
-        Returns:
-            dict: A dictionary of losses.
-        """
-        feats = self.extract_feat(inputs)
-
-        losses = dict()
-
-        if self.with_head:
-            losses.update(
-                self.head.loss(feats, data_samples, train_cfg=self.train_cfg))
-
-        return losses
-    
+        self.train_samples = self.train_cfg.get('num_samples', 1)
+        self.test_samples = self.test_cfg.get('num_samples', 1)
     def train_step(self, data: Union[dict, tuple, list],
-                   optim_wrapper: OptimWrapper) -> Dict[str, Tensor]:
+                   optim_wrapper: OptimWrapper) -> Dict[str, torch.Tensor]:
         """Implements the default model training process including
         preprocessing, model forward propagation, loss calculation,
         optimization, and back-propagation.
@@ -103,15 +83,109 @@ class TopdownIMixtureEPoseEstimator(BasePoseEstimator):
         Returns:
             Dict[str, torch.Tensor]: A ``dict`` of tensor for logging.
         """
+        if isinstance(data['inputs'], list):
+            count = len(data['inputs'])
+        else:
+            count = 1
+        
+        is_training = self.training
+        if is_training: self.eval()
+        with torch.no_grad():
+            data_test = self.data_preprocessor(data, True)
+            if isinstance(data_test['inputs'], list):
+                test_inputs = torch.stack(data_test['inputs'])
+            else:
+                test_inputs = data_test['inputs']
+            for sample in range(self.train_samples):
+                z = torch.randn((count, self.backbone.noise_channels), device =  test_inputs.device)
+                data_test['inputs'] = (test_inputs, z)
+                losses = self._run_forward(data_test, mode='loss')['loss_kpt']
+                
+                if sample == 0:
+                    noise = z
+                    min_losses = losses
+                else:
+                    mask = losses < min_losses
+                    min_losses[mask] = losses[mask]
+                    noise[mask] = z[mask]
+        if is_training: self.train()
+
         # Enable automatic mixed precision training context.
         with optim_wrapper.optim_context(self):
             data = self.data_preprocessor(data, True)
+            data['inputs'] = (data['inputs'], noise)
             losses = self._run_forward(data, mode='loss')  # type: ignore
         parsed_losses, log_vars = self.parse_losses(losses)  # type: ignore
         optim_wrapper.update_params(parsed_losses)
         return log_vars
+    def val_step(self, data: Union[tuple, dict, list]) -> list:
+        """Gets the predictions of given data.
 
-    def predict(self, inputs: Tensor, data_samples: SampleList) -> SampleList:
+        Calls ``self.data_preprocessor(data, False)`` and
+        ``self(inputs, data_sample, mode='predict')`` in order. Return the
+        predictions which will be passed to evaluator.
+
+        Args:
+            data (dict or tuple or list): Data sampled from dataset.
+
+        Returns:
+            list: The predictions of given data.
+        """
+        assert( hasattr(self.backbone, 'noise_channels'))
+        num_samples = self.test_cfg.get('num_samples', 1)
+        if data['inputs'].dim() == 4:
+            count = data['inputs'].shape[0]
+        else:
+            count = 1
+        
+        data = self.data_preprocessor(data, False)
+        noise = torch.randn((count, self.backbone.noise_channels), device = data.device)
+        data['inputs'] = Tuple(data['inputs'], noise)
+        return self._run_forward(data, mode='predict')  # type: ignore
+
+    def test_step(self, data: Union[dict, tuple, list]) -> list:
+        """``BaseModel`` implements ``test_step`` the same as ``val_step``.
+
+        Args:
+            data (dict or tuple or list): Data sampled from dataset.
+
+        Returns:
+            list: The predictions of given data.
+        """
+        assert( hasattr(self.backbone, 'noise_channels'))
+        num_samples = self.test_cfg.get('num_samples', 1)
+        if data['inputs'].dim() == 4:
+            count = data['inputs'].shape[0]
+        else:
+            count = 1
+        
+        data = self.data_preprocessor(data, False)
+        noise = torch.randn((count, self.backbone.noise_channels), device = data.device)
+        data['inputs'] = Tuple(data['inputs'], noise)
+        return self._run_forward(data, mode='predict')  # type: ignore
+
+    def loss(self, inputs: torch.Tensor, data_samples: SampleList) -> dict:
+        """Calculate losses from a batch of inputs and data samples.
+
+        Args:
+            inputs (Tensor): Inputs with shape (N, C, H, W).
+            data_samples (List[:obj:`PoseDataSample`]): The batch
+                data samples.
+
+        Returns:
+            dict: A dictionary of losses.
+        """
+        feats = self.extract_feat(inputs)
+
+        losses = dict()
+
+        if self.with_head:
+            losses.update(
+                self.head.loss(feats, data_samples, train_cfg=self.train_cfg))
+
+        return losses
+
+    def predict(self, inputs: torch.Tensor, data_samples: SampleList) -> SampleList:
         """Predict results from a batch of inputs and data samples with post-
         processing.
 
