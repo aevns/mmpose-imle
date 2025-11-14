@@ -14,11 +14,12 @@ from .simcc_label import SimCCLabel
 from .spr import SPR
 from .udp_heatmap import UDPHeatmap
 from .video_pose_lifting import VideoPoseLifting
+from .log_prob_heatmap import LogProbHeatmap
 
 __all__ = [
     'MSRAHeatmap', 'MegviiHeatmap', 'UDPHeatmap', 'RegressionLabel',
     'SimCCLabel', 'IntegralRegressionLabel', 'AssociativeEmbedding', 'SPR',
     'DecoupledHeatmap', 'VideoPoseLifting', 'ImagePoseLifting',
     'MotionBERTLabel', 'YOLOXPoseAnnotationProcessor', 'EDPoseLabel',
-    'Hand3DHeatmap'
+    'Hand3DHeatmap', 'LogProbHeatmap'
 ]

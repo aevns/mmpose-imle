@@ -12,7 +12,7 @@ from .regression_loss import (BoneLoss, L1Loss, MPJPELoss,
                               MPJPEVelocityJointLoss, MSELoss, OKSLoss,
                               RLELoss, SemiSupervisionLoss, SmoothL1Loss,
                               SoftWeightSmoothL1Loss, SoftWingLoss, WingLoss)
-from .custom_loss import NLLGaussianLoss
+from .custom_loss import (NLLGaussianLoss, DKLHeatmapLoss)
 
 __all__ = [
     'KeypointMSELoss', 'KeypointOHKMMSELoss', 'SmoothL1Loss', 'WingLoss',
@@ -21,5 +21,5 @@ __all__ = [
     'KLDiscretLoss', 'MultipleLossWrapper', 'JSDiscretLoss', 'CombinedLoss',
     'AssociativeEmbeddingLoss', 'SoftWeightSmoothL1Loss',
     'MPJPEVelocityJointLoss', 'FeaLoss', 'KDLoss', 'OKSLoss', 'IoULoss',
-    'VariFocalLoss', 'MLECCLoss', 'NLLGaussianLoss'
+    'VariFocalLoss', 'MLECCLoss', 'NLLGaussianLoss', 'DKLHeatmapLoss'
 ]

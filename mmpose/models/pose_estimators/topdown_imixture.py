@@ -99,7 +99,7 @@ class TopdownIMixturePoseEstimator(BasePoseEstimator):
             for sample in range(self.train_samples):
                 z = torch.randn((count, self.backbone.noise_channels), device =  test_inputs.device)
                 data_test['inputs'] = (test_inputs, z)
-                losses = self._run_forward(data_test, mode='loss')['loss_kpt']
+                losses = self.parse_losses(self._run_forward(data_test, mode='loss'))[0]
                 
                 if sample == 0:
                     noise = z
