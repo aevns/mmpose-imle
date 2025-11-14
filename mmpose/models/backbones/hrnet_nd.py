@@ -398,6 +398,19 @@ class HRNetND(BaseBackbone):
             num_channels,
             multiscale_output=self.stage4_cfg.get('multiscale_output', False))
 
+        self.norm3_name, norm3 = build_norm_layer(self.norm_cfg, self.stage3_cfg['num_channels'][-1], postfix=3)
+
+        self.conv3 = build_conv_layer(
+            self.conv_cfg,
+            self.stage3_cfg['num_channels'][-1] + self.noise_channels,
+            self.stage3_cfg['num_channels'][-1],
+            kernel_size=1,
+            stride=1,
+            padding=0,
+            bias=False
+        )
+        self.add_module(self.norm3_name, norm3)
+
         self._freeze_stages()
 
     @property
@@ -409,6 +422,11 @@ class HRNetND(BaseBackbone):
     def norm2(self):
         """nn.Module: the normalization layer named "norm2" """
         return getattr(self, self.norm2_name)
+
+    @property
+    def norm3(self):
+        """nn.Module: the normalization layer named "norm3" """
+        return getattr(self, self.norm3_name)
 
     def _make_transition_layer(self, num_channels_pre_layer,
                                num_channels_cur_layer):

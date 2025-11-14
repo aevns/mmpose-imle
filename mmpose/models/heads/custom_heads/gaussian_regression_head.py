@@ -22,7 +22,7 @@ OptIntSeq = Optional[Sequence[int]]
 
 
 @MODELS.register_module()
-class IntegralRegressionHead(BaseHead):
+class GaussianRegressionHead(BaseHead):
     """Top-down integral regression head introduced in `IPR`_ by Xiao et
     al(2018). The head contains a differentiable spatial to numerical transform
     (DSNT) layer that do soft-argmax operation on the predicted heatmaps to
@@ -249,7 +249,7 @@ class IntegralRegressionHead(BaseHead):
                 - heatmaps (Tensor): The predicted heatmaps in shape (K, h, w)
         """
 
-        # Flip test has not been implemented yet, and will not work!
+        # After reviewing flip_coordinates, I believe this should just work
         if test_cfg.get('flip_test', False):
             # TTA: flip test -> feats = [orig, flipped]
             assert isinstance(feats, list) and len(feats) == 2
@@ -311,11 +311,11 @@ class IntegralRegressionHead(BaseHead):
 
         # calculate accuracy
         _, avg_acc, _ = keypoint_pck_accuracy(
-            pred=to_numpy(pred_coords[:2]),
+            pred=to_numpy(pred_coords[..., :2]),
             gt=to_numpy(keypoint_labels),
             mask=to_numpy(keypoint_weights) > 0,
             thr=0.05,
-            norm_factor=np.ones(((pred_coords[:2]).size(0), 2), dtype=np.float32))
+            norm_factor=np.ones(((pred_coords[..., :2]).size(0), 2), dtype=np.float32))
 
         acc_pose = torch.tensor(avg_acc, device=keypoint_labels.device)
         losses.update(acc_pose=acc_pose)
