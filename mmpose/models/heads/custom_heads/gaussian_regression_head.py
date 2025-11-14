@@ -205,8 +205,8 @@ class GaussianRegressionHead(BaseHead):
         xn = (x_vals - x_means.view(B, N, 1, 1))
         yn = (y_vals - y_means.view(B, N, 1, 1))
 
-        x_var = 1/12 + torch.sum(heatmaps * xn * xn, dim=(2,3))
-        y_var = 1/12 + torch.sum(heatmaps * yn * yn, dim=(2,3))
+        x_var = 1.0/12 + torch.sum(heatmaps * xn * xn, dim=(2,3))
+        y_var = 1.0/12 + torch.sum(heatmaps * yn * yn, dim=(2,3))
         xy_covar = torch.sum(heatmaps * xn * yn, dim=(2,3))
         # This means the prob. of no detection is 1/(sum(e^feats) + 1)
         # This is like another softmax, where nondetection is always 1 for the comparison

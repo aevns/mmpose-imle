@@ -34,11 +34,11 @@ class NLLGaussianLoss(nn.Module):
         q = torch.matmul(torch.transpose(dif,-1,-2), torch.matmul(torch.inverse(cov_mat), dif))
         q = q.view(q.shape[0], q.shape[1])
         pose_loss = torch.sum(mask * ((torch.log(torch.det(cov_mat)) + q)/2 + 1.8378770664093455), dim=(-1))
-        # Logs are taken from (0.00001, 1] for numerical stability
-        # This ensures wildly wrong predictions don't have exploding gradients
+        # Logs are taken from (0.0001, 1] for numerical stability
+        # This should ensure wildly wrong predictions don't have exploding gradients
         if self.use_label_loss:
-            label_loss = -torch.log(1 - labeled * (1 - 1E-5))
-            label_loss[mask] = -torch.log(1E-5 + labeled[mask] * (1 - 1E-5))
+            label_loss = -torch.log(1 - labeled * (1 - 1E-4))
+            label_loss[mask] = -torch.log(1E-4 + labeled[mask] * (1 - 1E-4))
             pose_loss += torch.sum(label_loss, dim=-1)
-    
+        assert(~(torch.isnan(pose_loss).any()))
         return pose_loss * self.loss_weight
