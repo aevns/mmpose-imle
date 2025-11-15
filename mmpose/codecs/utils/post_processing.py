@@ -189,7 +189,15 @@ def get_heatmap_maximum(heatmaps: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         np.argmax(heatmaps_flatten, axis=1), shape=(H, W))
     locs = np.stack((x_locs, y_locs), axis=-1).astype(np.float32)
     vals = np.amax(heatmaps_flatten, axis=1)
-    locs[vals <= 0.] = -1
+    
+    # Andrew:
+    # What fucking idiot decided that heatmaps can't have negative values?
+    # Since when does "get heatmap maximum" mean "get heatmap positive valued maximum"?
+    # No log probabilities allowed? Fuck right off.
+    # If commenting this out breaks something,
+    # if THIS is somehow important for ANYTHING in this codebase,
+    # it's further testament to how awful this entire project is.
+    # locs[vals <= 0.] = -1
 
     if B:
         locs = locs.reshape(B, K, 2)
