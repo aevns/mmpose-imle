@@ -31,7 +31,7 @@ default_hooks = dict(checkpoint=dict(save_best='coco/AP', rule='greater'))
 
 # codec settings
 codec = dict(
-    type='GaussianRegressionLabel', input_size=(192, 256), heatmap_size=(48, 64), sigma=2)
+    type='MSRAHeatmap', input_size=(192, 256), heatmap_size=(48, 64), sigma=2)
 
 # model settings
 model = dict(
@@ -76,12 +76,11 @@ model = dict(
             type='Kaiming')
     ),
     head=dict(
-        type='GaussianRegressionHead',
+        type='HeatmapHead',
         in_channels=48,
-        in_featuremap_size=(48, 64),
-        num_joints=17,
+        out_channels=17,
         deconv_out_channels=None,
-        loss=dict(type='NLLGaussianLoss', use_target_weight=True),
+        loss=dict(type='KeypointMSELoss', use_target_weight=True),
         decoder=codec),
     test_cfg=dict(
         flip_test=True,
