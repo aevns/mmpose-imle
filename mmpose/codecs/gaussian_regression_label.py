@@ -11,7 +11,7 @@ from .regression_label import RegressionLabel
 
 
 @KEYPOINT_CODECS.register_module()
-class IntegralRegressionLabel(BaseKeypointCodec):
+class GaussianRegressionLabel(BaseKeypointCodec):
     """Generate keypoint coordinates and normalized heatmaps. See the paper:
     `DSNT`_ by Nibali et al(2018).
 

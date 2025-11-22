@@ -21,5 +21,5 @@ __all__ = [
     'SimCCLabel', 'IntegralRegressionLabel', 'AssociativeEmbedding', 'SPR',
     'DecoupledHeatmap', 'VideoPoseLifting', 'ImagePoseLifting',
     'MotionBERTLabel', 'YOLOXPoseAnnotationProcessor', 'EDPoseLabel',
-    'Hand3DHeatmap', 'LogProbHeatmap'
+    'Hand3DHeatmap', 'LogProbHeatmap', 'GaussianRegressionLabel'
 ]

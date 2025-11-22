@@ -31,19 +31,20 @@ default_hooks = dict(checkpoint=dict(save_best='coco/AP', rule='greater'))
 
 # codec settings
 codec = dict(
-    type='GaussianRegressionLabel', input_size=(192, 256))
+    type='LogProbHeatmap', input_size=(192, 256), heatmap_size=(48, 64), sigma=2)
 
 # model settings
 model = dict(
-    type='TopdownPoseEstimator',
+    type='TopdownIMLEPoseEstimator',
     data_preprocessor=dict(
         type='PoseDataPreprocessor',
         mean=[123.675, 116.28, 103.53],
         std=[58.395, 57.12, 57.375],
         bgr_to_rgb=True),
     backbone=dict(
-        type='HRNet',
+        type='HRNetND',
         in_channels=3,
+        noise_channels = 16,
         extra=dict(
             stage1=dict(
                 num_modules=1,
@@ -76,14 +77,17 @@ model = dict(
             type='Kaiming')
     ),
     head=dict(
-        type='GaussianRegressionHead',
+        type='HeatmapHead',
         in_channels=48,
-        in_featuremap_size=(48, 64),
-        num_joints=17,
+        out_channels=17,
         deconv_out_channels=None,
-        loss=dict(type='NLLGaussianLoss', use_target_weight=True),
+        loss=dict(type='DKLHeatmapLoss', use_target_weight=True),
         decoder=codec),
+    train_cfg=dict(
+        num_samples=4,
+    ),
     test_cfg=dict(
+        num_samples=1,
         flip_test=True,
         flip_mode='heatmap',
         shift_heatmap=True,

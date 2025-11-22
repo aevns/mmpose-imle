@@ -31,7 +31,7 @@ default_hooks = dict(checkpoint=dict(save_best='coco/AP', rule='greater'))
 
 # codec settings
 codec = dict(
-    type='RegressionLabel', input_size=(192, 256))
+    type='GaussianRegressionLabel', input_size=(192, 256))
 
 # model settings
 model = dict(
