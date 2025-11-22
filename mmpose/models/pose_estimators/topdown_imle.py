@@ -132,15 +132,15 @@ class TopdownIMLEPoseEstimator(BasePoseEstimator):
             list: The predictions of given data.
         """
         assert( hasattr(self.backbone, 'noise_channels'))
-        num_samples = self.test_cfg.get('num_samples', 1)
-        if data['inputs'].dim() == 4:
-            count = data['inputs'].shape[0]
+        count = self.test_cfg.get('num_samples', 1)
+        if isinstance(data['inputs'], list):
+            count = len(data['inputs'])
         else:
             count = 1
         
         data = self.data_preprocessor(data, False)
         noise = torch.randn((count, self.backbone.noise_channels), device = data.device)
-        data['inputs'] = Tuple(data['inputs'], noise)
+        data['inputs'] = (data['inputs'], noise)
         return self._run_forward(data, mode='predict')  # type: ignore
 
     def test_step(self, data: Union[dict, tuple, list]) -> list:
@@ -153,15 +153,15 @@ class TopdownIMLEPoseEstimator(BasePoseEstimator):
             list: The predictions of given data.
         """
         assert( hasattr(self.backbone, 'noise_channels'))
-        num_samples = self.test_cfg.get('num_samples', 1)
-        if data['inputs'].dim() == 4:
-            count = data['inputs'].shape[0]
+        count = self.test_cfg.get('num_samples', 1)
+        if isinstance(data['inputs'], list):
+            count = len(data['inputs'])
         else:
             count = 1
         
         data = self.data_preprocessor(data, False)
         noise = torch.randn((count, self.backbone.noise_channels), device = data.device)
-        data['inputs'] = Tuple(data['inputs'], noise)
+        data['inputs'] = (data['inputs'], noise)
         return self._run_forward(data, mode='predict')  # type: ignore
 
     def loss(self, inputs: torch.Tensor, data_samples: SampleList) -> dict:
