@@ -15,6 +15,7 @@ from .spr import SPR
 from .udp_heatmap import UDPHeatmap
 from .video_pose_lifting import VideoPoseLifting
 from .log_prob_heatmap import LogProbHeatmap
+from .gaussian_regression_label import GaussianRegressionLabel
 
 __all__ = [
     'MSRAHeatmap', 'MegviiHeatmap', 'UDPHeatmap', 'RegressionLabel',
