@@ -139,7 +139,7 @@ class TopdownIMLEPoseEstimator(BasePoseEstimator):
             count = 1
         
         data = self.data_preprocessor(data, False)
-        noise = torch.randn((count, self.backbone.noise_channels), device = data.device)
+        noise = torch.randn((count, self.backbone.noise_channels), device = data['inputs'].device)
         data['inputs'] = (data['inputs'], noise)
         return self._run_forward(data, mode='predict')  # type: ignore
 
@@ -160,7 +160,7 @@ class TopdownIMLEPoseEstimator(BasePoseEstimator):
             count = 1
         
         data = self.data_preprocessor(data, False)
-        noise = torch.randn((count, self.backbone.noise_channels), device = data.device)
+        noise = torch.randn((count, self.backbone.noise_channels), device = data['inputs'].device)
         data['inputs'] = (data['inputs'], noise)
         return self._run_forward(data, mode='predict')  # type: ignore
 
@@ -211,7 +211,7 @@ class TopdownIMLEPoseEstimator(BasePoseEstimator):
 
         if self.test_cfg.get('flip_test', False):
             _feats = self.extract_feat(inputs)
-            _feats_flip = self.extract_feat(inputs.flip(-1))
+            _feats_flip = self.extract_feat((inputs[0].flip(-1), inputs[1]))
             feats = [_feats, _feats_flip]
         else:
             feats = self.extract_feat(inputs)

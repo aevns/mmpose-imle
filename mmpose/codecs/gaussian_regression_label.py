@@ -116,8 +116,8 @@ class GaussianRegressionLabel(BaseKeypointCodec):
                 It usually represents the confidence of the keypoint prediction
         """
 
-        w, h = self.input_size
+        w, h = self.keypoint_codec.input_size
         full_stats = encoded * np.array([w, h, w*w, h*h, w*h, 1])
         keypoints = full_stats[..., :2]
         scores = full_stats[..., 5]
-        return keypoints, scores, full_stats
+        return keypoints, scores
