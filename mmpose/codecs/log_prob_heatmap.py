@@ -115,6 +115,7 @@ class LogProbHeatmap(BaseKeypointCodec):
             for k in range(K):
                 # skip unlabled keypoints
                 if keypoints_visible[n, k] < 0.5:
+                    heatmaps[k] = -np.log(H * W)
                     continue
 
                 # The gaussian is in log probabilities
@@ -142,11 +143,14 @@ class LogProbHeatmap(BaseKeypointCodec):
         heatmaps = encoded.copy()
         K, H, W = heatmaps.shape
 
-        heatmaps = heatmaps - np.min(encoded) + 1
-        keypoints, scores = get_heatmap_maximum(heatmaps)
+        exp_heatmaps = np.exp(heatmaps)
+        z = 1 - 1 / (np.sum(exp_heatmaps, axis=(1, 2)) + 1)
+        scores = z[np.newaxis, ...]
+        heatmaps = exp_heatmaps / (z[..., np.newaxis, np.newaxis])
+        keypoints, _ = get_heatmap_maximum(heatmaps)
 
         # Unsqueeze the instance dimension for single-instance results
-        keypoints, scores = keypoints[None], scores[None]
+        keypoints, _ = keypoints[None], scores[None]
 
         keypoints = refine_keypoints(keypoints, heatmaps)
 

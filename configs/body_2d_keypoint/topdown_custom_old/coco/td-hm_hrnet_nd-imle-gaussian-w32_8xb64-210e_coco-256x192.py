@@ -153,3 +153,12 @@ val_evaluator = dict(
     type='CocoMetric',
     ann_file=data_root + 'annotations/person_keypoints_val2017.json')
 test_evaluator = val_evaluator
+
+# visualizer
+vis_backends = [
+    dict(type='LocalVisBackend'),
+    # dict(type='TensorboardVisBackend'),
+    # dict(type='WandbVisBackend'),
+]
+visualizer = dict(
+    type='PoseLocalCustomVisualizer', vis_backends=vis_backends, name='visualizer')
