@@ -137,7 +137,7 @@ class LogProbHeatmap(BaseKeypointCodec):
         K, H, W = encoded.shape
         z = 1 - 1 / (np.sum(np.exp(encoded), axis=(1, 2)) + 1)
         scores = z[np.newaxis, ...]
-        exp_heatmaps = np.exp(encoded - np.max(encoded, axis=(1, 2)))
+        exp_heatmaps = np.exp(encoded - np.max(encoded, axis=(1, 2), keepdims=True))
         keypoints, _ = get_heatmap_maximum(exp_heatmaps)
 
         # Unsqueeze the instance dimension for single-instance results
