@@ -105,23 +105,17 @@ class LogProbHeatmap(BaseKeypointCodec):
         W, H = self.heatmap_size
 
         heatmaps = np.zeros((K, H, W), dtype=np.float32)
+        heatmaps -= np.log(W * H)
         keypoint_weights = keypoints_visible.copy()
-
-        sigma = (self.sigma, ) * N
         
-        x = np.arange(0, W, 1, dtype=np.float32)
-        y = np.arange(0, H, 1, dtype=np.float32)[:, None]
-        for n in range(N):
+        if N==1:
+            x = np.arange(0, W, 1, dtype=np.float32)
+            y = np.arange(0, H, 1, dtype=np.float32)[:, None]
             for k in range(K):
                 # skip unlabled keypoints
-                if keypoints_visible[n, k] < 0.5:
-                    heatmaps[k] = -np.log(H * W)
-                    continue
-
-                # The gaussian is in log probabilities
-                gaussian = -((x - keypoints[n, k][1]/ self.scale_factor[1])**2 + (y - keypoints[n, k][0] / self.scale_factor[0])**2) / (2 * sigma[n]**2)
-                gaussian -= logsumexp(gaussian)
-                heatmaps[k] = gaussian
+                if keypoints_visible[0, k] >= 0.5:
+                    heatmaps[k] = -((x - keypoints[0, k][1]/ self.scale_factor[1])**2 + (y - keypoints[0, k][0] / self.scale_factor[0])**2) / (2 * self.sigma**2)
+                heatmaps[k] -= logsumexp(heatmaps[k])
         encoded = dict(heatmaps=heatmaps, keypoint_weights=keypoint_weights)
 
         return encoded
@@ -140,19 +134,16 @@ class LogProbHeatmap(BaseKeypointCodec):
             - scores (np.ndarray): The keypoint scores in shape (N, K). It
                 usually represents the confidence of the keypoint prediction
         """
-        heatmaps = encoded.copy()
-        K, H, W = heatmaps.shape
-
-        exp_heatmaps = np.exp(heatmaps)
-        z = 1 - 1 / (np.sum(exp_heatmaps, axis=(1, 2)) + 1)
+        K, H, W = encoded.shape
+        z = 1 - 1 / (np.sum(np.exp(encoded), axis=(1, 2)) + 1)
         scores = z[np.newaxis, ...]
-        heatmaps = exp_heatmaps / (z[..., np.newaxis, np.newaxis])
-        keypoints, _ = get_heatmap_maximum(heatmaps)
+        exp_heatmaps = np.exp(encoded - np.max(encoded, axis=(1, 2)))
+        keypoints, _ = get_heatmap_maximum(exp_heatmaps)
 
         # Unsqueeze the instance dimension for single-instance results
         keypoints, _ = keypoints[None], scores[None]
 
-        keypoints = refine_keypoints(keypoints, heatmaps)
+        keypoints = refine_keypoints(keypoints, exp_heatmaps)
 
         # Restore the keypoint scale
         keypoints = keypoints * self.scale_factor
