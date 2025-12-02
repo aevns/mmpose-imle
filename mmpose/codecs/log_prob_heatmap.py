@@ -142,6 +142,7 @@ class LogProbHeatmap(BaseKeypointCodec):
         heatmaps = encoded.copy()
         K, H, W = heatmaps.shape
 
+        heatmaps = heatmaps - np.min(encoded) + 1
         keypoints, scores = get_heatmap_maximum(heatmaps)
 
         # Unsqueeze the instance dimension for single-instance results

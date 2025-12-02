@@ -197,7 +197,7 @@ def get_heatmap_maximum(heatmaps: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     # If commenting this out breaks something,
     # if THIS is somehow important for ANYTHING in this codebase,
     # it's further testament to how awful this entire project is.
-    # locs[vals <= 0.] = -1
+    locs[vals <= 0.] = -1
 
     if B:
         locs = locs.reshape(B, K, 2)

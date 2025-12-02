@@ -35,16 +35,15 @@ codec = dict(
 
 # model settings
 model = dict(
-    type='TopdownIMLEPoseEstimator',
+    type='TopdownPoseEstimator',
     data_preprocessor=dict(
         type='PoseDataPreprocessor',
         mean=[123.675, 116.28, 103.53],
         std=[58.395, 57.12, 57.375],
         bgr_to_rgb=True),
     backbone=dict(
-        type='HRNetND',
+        type='HRNet',
         in_channels=3,
-        noise_channels = 16,
         extra=dict(
             stage1=dict(
                 num_modules=1,
@@ -57,19 +56,19 @@ model = dict(
                 num_branches=2,
                 block='BASIC',
                 num_blocks=(4, 4),
-                num_channels=(48, 96)),
+                num_channels=(32, 64)),
             stage3=dict(
                 num_modules=4,
                 num_branches=3,
                 block='BASIC',
                 num_blocks=(4, 4, 4),
-                num_channels=(48, 96, 192)),
+                num_channels=(32, 64, 128)),
             stage4=dict(
                 num_modules=3,
                 num_branches=4,
                 block='BASIC',
                 num_blocks=(4, 4, 4, 4),
-                num_channels=(48, 96, 192, 384))),
+                num_channels=(32, 64, 128, 256))),
         init_cfg=dict(
             #type='Pretrained',
             #checkpoint='https://download.openmmlab.com/mmpose/'
@@ -78,17 +77,13 @@ model = dict(
     ),
     head=dict(
         type='GaussianRegressionHead',
-        in_channels=48,
+        in_channels=32,
         in_featuremap_size=(48, 64),
         num_joints=17,
         deconv_out_channels=None,
         loss=dict(type='NLLGaussianLoss', use_target_weight=True),
         decoder=codec),
-    train_cfg=dict(
-        num_samples=4,
-    ),
     test_cfg=dict(
-        num_samples=1,
         flip_test=True,
         flip_mode='heatmap',
         shift_heatmap=True,
@@ -119,7 +114,7 @@ val_pipeline = [
 
 # data loaders
 train_dataloader = dict(
-    batch_size=32,
+    batch_size=64,
     num_workers=2,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -155,12 +150,3 @@ val_evaluator = dict(
     type='CocoMetric',
     ann_file=data_root + 'annotations/person_keypoints_val2017.json')
 test_evaluator = val_evaluator
-
-# visualizer
-vis_backends = [
-    dict(type='LocalVisBackend'),
-    # dict(type='TensorboardVisBackend'),
-    # dict(type='WandbVisBackend'),
-]
-visualizer = dict(
-    type='PoseLocalCustomVisualizer', vis_backends=vis_backends, name='visualizer')
