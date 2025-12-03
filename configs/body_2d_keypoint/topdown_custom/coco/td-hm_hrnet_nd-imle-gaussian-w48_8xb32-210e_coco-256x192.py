@@ -163,4 +163,4 @@ vis_backends = [
     # dict(type='WandbVisBackend'),
 ]
 visualizer = dict(
-    type='PoseLocalCustomVisualizer', vis_backends=vis_backends, name='visualizer')
+    type='PoseLocalCustomVisualizer', vis_backends=vis_backends, show_keypoint_weight=True, name='visualizer')
