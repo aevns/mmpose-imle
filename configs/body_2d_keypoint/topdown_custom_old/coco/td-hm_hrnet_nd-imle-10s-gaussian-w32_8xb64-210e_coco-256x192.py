@@ -84,7 +84,7 @@ model = dict(
         loss=dict(type='NLLGaussianLoss', use_target_weight=True),
         decoder=codec),
     train_cfg=dict(
-        num_samples=3,
+        num_samples=10,
     ),
     test_cfg=dict(
         flip_test=True,

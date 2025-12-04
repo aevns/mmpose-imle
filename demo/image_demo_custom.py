@@ -94,7 +94,7 @@ def main():
         img,
         data_sample=results,
         draw_gt=False,
-        draw_bbox=True,
+        draw_bbox=False,
         kpt_thr=args.kpt_thr,
         draw_heatmap=args.draw_heatmap,
         show_kpt_idx=args.show_kpt_idx,
