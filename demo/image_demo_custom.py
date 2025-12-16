@@ -84,6 +84,7 @@ def main():
         model.dataset_meta, skeleton_style=args.skeleton_style)
 
     # inference a single image
+    
     batch_results = inference_topdown(model, args.img)
     results = merge_data_samples(batch_results)
 

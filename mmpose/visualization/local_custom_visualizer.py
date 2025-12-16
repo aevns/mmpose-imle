@@ -278,6 +278,7 @@ class PoseLocalCustomVisualizer(OpencvBackendVisualizer):
             else:
                 keypoints_visible = np.ones(keypoints.shape[:-1])
 
+            self._image = self._image / 4
             for kpts, visible in zip(keypoints, keypoints_visible):
                 kpts = np.array(kpts, copy=False)
 
@@ -329,8 +330,17 @@ class PoseLocalCustomVisualizer(OpencvBackendVisualizer):
                                 min(1,
                                     0.5 * (visible[sk[0]] + visible[sk[1]])))
 
-                        self.draw_lines(
-                            X, Y, color, line_widths=self.line_width)
+                        #self.draw_lines(
+                        #    X, Y, color, line_widths=self.line_width)
+                        if isinstance(color, str):
+                            color = mmcv.color_val(color)[::-1]
+                        img = cv2.line(
+                            self._image.copy(), (X[0], Y[0]),
+                            (X[1], Y[1]),
+                            color,
+                            thickness=self.line_width)
+                        self._image = cv2.addWeighted(self._image, 1 - transparency, img,
+                                                transparency, 0)
 
                 # draw each point on image
                 for kid, kpt in enumerate(kpts):
@@ -351,6 +361,21 @@ class PoseLocalCustomVisualizer(OpencvBackendVisualizer):
                         edge_colors=color,
                         alpha=transparency,
                         line_widths=self.radius)
+                    if len(kpt) == 6:
+                        l1 = (kpt[2]+kpt[3])/2 + math.sqrt((kpt[2]-kpt[3])**2/4 + kpt[4]**2)
+                        l2 = (kpt[2]+kpt[3])/2 - math.sqrt((kpt[2]-kpt[3])**2/4 + kpt[4]**2)
+                        img = cv2.ellipse(
+                            self._image.copy(),
+                            (int(kpt[0]), int(kpt[1])),
+                            (int(math.sqrt(l1)), int(math.sqrt(l2))),
+                            int(math.atan2(l1 - kpt[2], kpt[4]) * 180 / math.pi),
+                            0,
+                            360,
+                            color = ((color[0] + 510) // 3, (color[1] + 510) // 3, (color[2] + 510) // 3),
+                            thickness = 1,
+                            )
+                        self._image = cv2.addWeighted(self._image, 1 - transparency, img,
+                                                transparency, 0)
                     if show_kpt_idx:
                         kpt_idx_coords = kpt + [self.radius, -self.radius]
                         self.draw_texts(
