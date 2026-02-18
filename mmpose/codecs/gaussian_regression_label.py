@@ -120,4 +120,4 @@ class GaussianRegressionLabel(BaseKeypointCodec):
         full_stats = encoded * np.array([w, h, w*w, h*h, w*h, 1])
         keypoints = full_stats[..., :2]
         scores = full_stats[..., 5]
-        return keypoints, scores
+        return full_stats, scores

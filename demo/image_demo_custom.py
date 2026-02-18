@@ -9,6 +9,7 @@ from mmpose.apis import inference_topdown, init_model
 from mmpose.registry import VISUALIZERS
 from mmpose.structures import merge_data_samples
 
+import torch
 
 def parse_args():
     parser = ArgumentParser()
@@ -84,8 +85,38 @@ def main():
         model.dataset_meta, skeleton_style=args.skeleton_style)
 
     # inference a single image
+    
     batch_results = inference_topdown(model, args.img)
     results = merge_data_samples(batch_results)
+    if type(model).__name__ == "TopdownIMLEPoseEstimator":
+        cov_idx = torch.tensor([[2,4],[4,3]])
+        def entropy(output):
+            out = torch.from_numpy(output)
+            cov_mat = out[0, :, cov_idx]
+            labeled = out[0, :, 5]
+            
+            mask = labeled
+            pose_entropy = torch.sum(mask * (torch.log(torch.det(cov_mat))/2 + 2.8378770664093455), dim=(-1))
+            # Logs are taken from (0.0001, 1] for numerical stability
+            # This should ensure wildly wrong predictions don't have exploding gradients
+            label_enropy = labeled * -torch.log(1 - labeled * (1 - 1E-4))
+            label_enropy += (1-labeled) * -torch.log(1E-4 + labeled * (1 - 1E-4))
+            pose_entropy += torch.sum(label_enropy, dim=-1)
+            return torch.sum(pose_entropy)
+        
+        min_entropy = 1E40
+        for i in range(0, 32):
+            br = inference_topdown(model, args.img)
+            res = merge_data_samples(br)
+            ent = entropy(res.pred_instances.keypoints)
+            if ent < min_entropy:
+                min_entropy = ent
+                results = res
+
+    else:
+        batch_results = inference_topdown(model, args.img)
+        results = merge_data_samples(batch_results)
+
 
     # show the results
     img = imread(args.img, channel_order='rgb')

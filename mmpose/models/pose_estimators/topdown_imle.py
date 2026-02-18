@@ -264,6 +264,10 @@ class TopdownIMLEPoseEstimator(BasePoseEstimator):
             pred_instances.keypoints[..., :2] = \
                 pred_instances.keypoints[..., :2] / input_size * input_scale \
                 + input_center - 0.5 * input_scale
+            if pred_instances.keypoints.shape[-1] == 6:
+                sf =  input_scale / input_size
+                pred_instances.keypoints[..., 2:5] = \
+                    pred_instances.keypoints[..., 2:5] * (sf[0]*sf[0], sf[1]*sf[1], sf[0]*sf[1])
             if 'keypoints_visible' not in pred_instances:
                 pred_instances.keypoints_visible = \
                     pred_instances.keypoint_scores
